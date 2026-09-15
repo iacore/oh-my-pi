@@ -1,9 +1,9 @@
 # Changelog
 
 ## [Unreleased]
-
 ### Added
 
+- `/continue` command resumes a response you interrupted with Esc — the model picks up exactly where it stopped, with no extra message added to the conversation.
 - `display.hideToolOutputDetails` renders each tool call as its own one-line summary and hides its output body, and `app.display.toggleDetail` moves that together with the thinking-block toggle from a single key ([#11840](https://github.com/can1357/oh-my-pi/pull/11840) by [@iacore](https://github.com/iacore)).
 
 ### Fixed

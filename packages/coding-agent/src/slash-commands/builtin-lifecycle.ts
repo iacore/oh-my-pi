@@ -9,7 +9,7 @@ import { loadSlashCommands } from "../extensibility/slash-commands";
 import { memoryStatsUnavailableMessage, resolveMemoryBackend } from "../memory-backend";
 import type { AgentSession, FreshSessionResult, HandoffResult } from "../session/agent-session";
 import { COMPACT_MODES, parseCompactArgs } from "../session/compact-modes";
-import { buildReplanTitleContext, USER_INTERRUPT_LABEL } from "../session/messages";
+import { buildReplanTitleContext, findResumableAbortedAssistant, USER_INTERRUPT_LABEL } from "../session/messages";
 import { resolveResumableSession } from "../session/session-listing";
 import { toggleSessionPin } from "../session/session-pins";
 import {
@@ -547,6 +547,39 @@ export const BUILTIN_LIFECYCLE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> =
 				runtime.ctx.showStatus("Nothing to retry");
 			}
 			runtime.ctx.editor.setText("");
+		},
+	},
+	{
+		name: "continue",
+		icon: "redo",
+		description: "Continue an interrupted response (no message sent)",
+		getTuiAutocompleteDescription: runtime => {
+			const tail = findResumableAbortedAssistant(runtime.ctx.session.messages);
+			return tail ? "Continue: resumable interrupted turn" : "Continue: nothing to resume";
+		},
+		handle: async (_command, runtime) => {
+			if (runtime.session.isStreaming) {
+				return usage("Wait for the current response to finish or abort it before continuing.", runtime);
+			}
+			if (!runtime.session.continueInterrupted()) {
+				return usage("Nothing to continue — no interrupted turn.", runtime);
+			}
+			await runtime.output("Continuing the interrupted turn.");
+			// Same post-prompt continuation contract as /retry: the continuation is
+			// only scheduled, so ACP hosts must keep their prompt turn open across
+			// it or its output would stream into an already-unsubscribed turn.
+			await runtime.keepTurnOpenUntilIdle?.();
+			return commandConsumed({ agentInvoked: true });
+		},
+		handleTui: async (_command, runtime) => {
+			runtime.ctx.editor.setText("");
+			if (runtime.ctx.session.isStreaming) {
+				runtime.ctx.showStatus("Busy — wait for the current response to finish or abort it first.");
+				return;
+			}
+			if (!runtime.ctx.session.continueInterrupted()) {
+				runtime.ctx.showError("Nothing to continue — /continue resumes only an interrupted (aborted) turn.");
+			}
 		},
 	},
 	{

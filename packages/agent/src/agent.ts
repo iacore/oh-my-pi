@@ -1249,13 +1249,23 @@ export class Agent {
 				}
 				throw new Error("No messages to continue from");
 			}
-			if (messages[messages.length - 1].role === "assistant") {
+			const lastMessage = messages[messages.length - 1] as AssistantMessage | undefined;
+			if (lastMessage?.role === "assistant") {
 				// A tail with unpaired runnable tool calls resumes by re-executing
 				// them (see `unpairedToolCallTail` in agent-loop). This must win over
 				// queued-message delivery: injecting a message between the tool_use
 				// blocks and their results would break the provider's pairing
 				// invariant. Queued messages drain inside the resumed loop instead.
 				if (unpairedToolCallTail(messages)) {
+					await this.#runLoop(undefined, undefined, signal, true);
+					return;
+				}
+				// An aborted (user-interrupted) partial assistant turn is the other
+				// resumable assistant tail: runLoop replays it as prefill so the
+				// model continues where the stream was cut off. A queued message
+				// pending instead wins and drains below; any other assistant tail
+				// still requires one or throws here.
+				if (!this.hasQueuedMessages() && lastMessage.stopReason === "aborted") {
 					await this.#runLoop(undefined, undefined, signal, true);
 					return;
 				}
