@@ -552,17 +552,21 @@ export const BUILTIN_LIFECYCLE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> =
 	{
 		name: "continue",
 		icon: "redo",
-		description: "Continue an interrupted response (no message sent)",
+		description: "Continue an interrupted response; with nothing interrupted, sends an empty prompt",
 		getTuiAutocompleteDescription: runtime => {
 			const tail = findResumableAbortedAssistant(runtime.ctx.session.messages);
-			return tail ? "Continue: resumable interrupted turn" : "Continue: nothing to resume";
+			return tail ? "Continue: resumable interrupted turn" : "Continue: nothing interrupted — sends an empty prompt";
 		},
 		handle: async (_command, runtime) => {
 			if (runtime.session.isStreaming) {
 				return usage("Wait for the current response to finish or abort it before continuing.", runtime);
 			}
 			if (!runtime.session.continueInterrupted()) {
-				return usage("Nothing to continue — no interrupted turn.", runtime);
+				// Nothing interrupted to replay as assistant prefill. A settled assistant
+				// tail cannot be continued in place (`Agent.continue()` rejects it), so the
+				// only way to pick the thread back up is a new turn — hand the host an
+				// empty prompt instead of failing the command.
+				return { prompt: "" };
 			}
 			await runtime.output("Continuing the interrupted turn.");
 			// Same post-prompt continuation contract as /retry: the continuation is
@@ -570,16 +574,6 @@ export const BUILTIN_LIFECYCLE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> =
 			// it or its output would stream into an already-unsubscribed turn.
 			await runtime.keepTurnOpenUntilIdle?.();
 			return commandConsumed({ agentInvoked: true });
-		},
-		handleTui: async (_command, runtime) => {
-			runtime.ctx.editor.setText("");
-			if (runtime.ctx.session.isStreaming) {
-				runtime.ctx.showStatus("Busy — wait for the current response to finish or abort it first.");
-				return;
-			}
-			if (!runtime.ctx.session.continueInterrupted()) {
-				runtime.ctx.showError("Nothing to continue — /continue resumes only an interrupted (aborted) turn.");
-			}
 		},
 	},
 	{

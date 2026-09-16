@@ -316,7 +316,7 @@ Cross-project id match behavior:
 
 For compatibility, `--continue <full-UUID>` is normalized to `--resume <UUID>` when the UUID is the sole positional message. The `autoResume` setting invokes the same `continueRecent` behavior when no explicit session flag/session directory is supplied, and restores session model/thinking state when a prior transcript was found.
 
-This is startup-only behavior; there is no interactive `/continue` slash command.
+The `--continue` flag is startup-only. Interactively, `/continue` resumes a turn you interrupted with Esc: the partial assistant message is replayed as prefill, so the model picks up exactly where the stream stopped with no message appended. When nothing is interrupted (a settled or empty transcript) it sends an empty prompt instead, starting a fresh turn from the existing context. Both paths are refused while a response is streaming.
 
 ## How session switching actually mutates runtime state
 
