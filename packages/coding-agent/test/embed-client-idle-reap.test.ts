@@ -16,13 +16,15 @@ interface FakeWorker {
 
 /** Worker that answers every request after a microtask, like the real IPC round-trip. */
 function makeFakeWorker(): FakeWorker {
-	const worker = {
-		sent: [] as FakeWorker["sent"],
-		terminated: false,
-		handle: null as unknown,
-		reply: () => {},
-	};
 	const handlers = new Set<(message: unknown) => void>();
+	const worker: FakeWorker = {
+		sent: [],
+		terminated: false,
+		handle: null,
+		reply: message => {
+			for (const handler of handlers) handler(message);
+		},
+	};
 	worker.handle = {
 		send(message: FakeWorker["sent"][number]) {
 			worker.sent.push(message);
@@ -45,9 +47,6 @@ function makeFakeWorker(): FakeWorker {
 			worker.terminated = true;
 			handlers.clear();
 		},
-	};
-	worker.reply = (message: unknown) => {
-		for (const handler of handlers) handler(message);
 	};
 	return worker;
 }
