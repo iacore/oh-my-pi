@@ -5,6 +5,7 @@
 
 - `/continue` command resumes a response you interrupted with Esc — the model picks up exactly where it stopped, with no extra message added to the conversation; with nothing interrupted it sends an empty prompt instead of refusing.
 - `display.hideToolOutputDetails` renders each tool call as its own one-line summary and hides its output body, and `app.display.toggleDetail` moves that together with the thinking-block toggle from a single key ([#11840](https://github.com/can1357/oh-my-pi/pull/11840) by [@iacore](https://github.com/iacore)).
+- `OMP_ALLOW_HOME=1` keeps a session started in `~` there instead of auto-switching it to a temp directory, matching `--allow-home` for every launch path.
 
 ### Fixed
 

@@ -1,10 +1,12 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { directoryExists, getProjectDir, normalizePathForComparison, setProjectDir } from "@oh-my-pi/pi-utils";
+import { $flag, directoryExists, getProjectDir, normalizePathForComparison, setProjectDir } from "@oh-my-pi/pi-utils";
 import type { Args } from "./args";
 
 async function maybeAutoChdir(parsed: Args): Promise<void> {
-	if (parsed.allowHome || parsed.cwd) {
+	// `OMP_ALLOW_HOME` is the persisted form of `--allow-home`: the agent .env is
+	// loaded before this runs, so it covers every launch path (TUI, RPC, workers).
+	if (parsed.allowHome || parsed.cwd || $flag("OMP_ALLOW_HOME")) {
 		return;
 	}
 

@@ -58,6 +58,7 @@ export function getExtraHelpText(): string {
   ${chalk.dim("# Configuration")}
   OMP_PROFILE                 - Named profile for isolated agent state (same as --profile)
   Use \`omp --profile <name> --alias <command>\` to create a shell shortcut for a profile
+  OMP_ALLOW_HOME              - If 1, start in ~ without auto-switching to a temp dir (same as --allow-home)
   PI_CODING_AGENT_DIR        - Session storage directory (default: ~/${CONFIG_DIR_NAME}/agent)
   PI_PACKAGE_DIR             - Override package directory (for Nix/Guix store paths)
   PI_SMOL_MODEL              - Override smol/fast model (see --smol)

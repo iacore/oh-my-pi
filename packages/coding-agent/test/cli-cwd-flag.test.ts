@@ -103,3 +103,34 @@ describe("parseArgs — --cwd flag", () => {
 		}
 	});
 });
+
+describe("applyStartupCwd — home auto-chdir", () => {
+	it("keeps the home directory as the project when OMP_ALLOW_HOME is set", async () => {
+		const home = os.homedir();
+		setProjectDir(home);
+		process.env.OMP_ALLOW_HOME = "1";
+
+		try {
+			await applyStartupCwd(parseArgs([]));
+
+			expect(getProjectDir()).toBe(home);
+			expect(normalizePathForComparison(process.cwd())).toBe(normalizePathForComparison(home));
+		} finally {
+			delete process.env.OMP_ALLOW_HOME;
+		}
+	});
+
+	it("still switches away from home when OMP_ALLOW_HOME is explicitly off", async () => {
+		const home = os.homedir();
+		setProjectDir(home);
+		process.env.OMP_ALLOW_HOME = "0";
+
+		try {
+			await applyStartupCwd(parseArgs([]));
+
+			expect(normalizePathForComparison(getProjectDir())).not.toBe(normalizePathForComparison(home));
+		} finally {
+			delete process.env.OMP_ALLOW_HOME;
+		}
+	});
+});
