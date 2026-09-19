@@ -10,6 +10,7 @@
 ### Fixed
 
 - Fixed long streamed replies being clipped to the live viewport until the turn ended; finished lines now retire into terminal scrollback while the response is still streaming. Models whose wire can revise text it has already streamed (`stream-revision`) keep the old behaviour ([#11276](https://github.com/can1357/oh-my-pi/issues/11276)).
+- Streaming no longer skips the blank line that separates a reply from the transcript above it: finished rows leave the live viewport the frame they freeze instead of waiting for the transcript to fill the window, so the live area only holds rows the terminal can actually show ([#11276](https://github.com/can1357/oh-my-pi/issues/11276)).
 
 	- Fixed GPT-6 Astra extended-context support and preserved maximum context windows reported by OpenAI Codex discovery ([#10980](https://github.com/can1357/oh-my-pi/pull/10980) by [@H4vC](https://github.com/H4vC)).
 
