@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `stream-revision` compat axis (`compat.streamRevision`): whether a wire can rewrite text it has already streamed. Kimi (class rule) and Amazon Bedrock declare `possible`; every other wire is append-only, which is what lets the transcript retire finished streamed rows into terminal scrollback mid-turn ([#11276](https://github.com/can1357/oh-my-pi/issues/11276)).
+
 ## [18.1.18] - 2026-09-11
 
 ### Added
