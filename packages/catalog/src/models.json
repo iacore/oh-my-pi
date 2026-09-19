@@ -56044,7 +56044,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			},
 			"supportsComputerUse": false
 		},
@@ -56125,7 +56126,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			},
 			"supportsComputerUse": false
 		},
@@ -56206,7 +56208,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			},
 			"supportsComputerUse": false
 		},
@@ -56287,7 +56290,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			},
 			"supportsComputerUse": false
 		},
@@ -56386,7 +56390,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			},
 			"supportsComputerUse": false
 		},
@@ -77289,7 +77294,8 @@
 				"stripImageInput": false,
 				"rejectRootObjectUnion": false,
 				"retryWithoutStrictOnGrammarError": false,
-				"supportsPromptCacheKey": false
+				"supportsPromptCacheKey": false,
+				"streamRevision": "possible"
 			}
 		}
 	},
@@ -270043,7 +270049,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			},
@@ -270196,7 +270203,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -270346,7 +270354,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -270509,7 +270518,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -277903,7 +277913,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			},
@@ -278053,7 +278064,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -278205,7 +278217,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -278355,7 +278368,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
@@ -278518,7 +278532,8 @@
 					"stripImageInput": false,
 					"rejectRootObjectUnion": false,
 					"retryWithoutStrictOnGrammarError": false,
-					"supportsPromptCacheKey": false
+					"supportsPromptCacheKey": false,
+					"streamRevision": "possible"
 				},
 				"streamRevision": "possible"
 			}
