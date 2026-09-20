@@ -327,6 +327,12 @@ export interface OpenAICompat {
 	 * Default: auto-detected (DeepSeek reasoning models).
 	 */
 	disableReasoningOnToolChoice?: boolean;
+	/**
+	 * Disable reasoning whenever the request advertises function tools.
+	 * Use for model surfaces that reject every tools-plus-reasoning combination.
+	 * Default: false.
+	 */
+	disableReasoningWithTools?: boolean;
 	/** OpenRouter-specific routing preferences. Only used when baseUrl points to OpenRouter. */
 	openRouterRouting?: OpenRouterRouting;
 	/** Vercel AI Gateway routing preferences. Only used when baseUrl points to Vercel AI Gateway. */
@@ -421,6 +427,16 @@ export interface OpenAICompat {
 	strictResponsesPairing?: boolean;
 	/** Whether the Responses API accepts the `detail: "original"` image hint. Default: auto-detected (false for GitHub Copilot, which rejects it with a 400). */
 	supportsImageDetailOriginal?: boolean;
+	/**
+	 * Whether the Responses endpoint accepts `configuration_update` input items
+	 * that change `reasoning.effort` mid-conversation while the request-level
+	 * effort stays pinned for prompt caching (GPT-6 Astra). Default:
+	 * rule-detected (`true` for `gpt-6-astra` on any host, `false` otherwise).
+	 * Set `false` for custom `openai-responses` / `openai-codex-responses`
+	 * endpoints that reject the item type with HTTP 400; effort changes are then
+	 * sent as the top-level `reasoning.effort`.
+	 */
+	supportsConfigurationUpdate?: boolean;
 	/** Whether streamed reasoning deltas for the same field may repeat the full cumulative text snapshot. Default: false. */
 	reasoningDeltasMayBeCumulative?: boolean;
 	/** Strip leaked DeepSeek chat-template special tokens from visible content deltas. Default: auto-detected. */
@@ -694,6 +710,7 @@ export interface ResolvedOpenAISharedCompat {
 	filterReasoningHistory: boolean;
 	disableReasoningOnForcedToolChoice: boolean;
 	disableReasoningOnToolChoice: boolean;
+	disableReasoningWithTools?: boolean;
 	supportsToolChoice: boolean;
 	supportsForcedToolChoice: boolean;
 	supportsNamedToolChoice: boolean;
@@ -773,6 +790,7 @@ export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 			| "filterReasoningHistory"
 			| "disableReasoningOnForcedToolChoice"
 			| "disableReasoningOnToolChoice"
+			| "disableReasoningWithTools"
 			| "supportsToolChoice"
 			| "supportsForcedToolChoice"
 			| "supportsNamedToolChoice"
@@ -814,6 +832,7 @@ export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 			| "thinkingKeep"
 			| "strictResponsesPairing"
 			| "supportsImageDetailOriginal"
+			| "supportsConfigurationUpdate"
 			| "stripImageInput"
 			| "thinkingLoopGuard"
 			| "whenThinking"
@@ -1123,6 +1142,13 @@ export interface Model<TApi extends Api = Api> {
 	/** Whether this model requires tool-result images hoisted into sibling user content blocks. */
 	requiresToolResultImageHoisting?: boolean;
 	/**
+	 * Whether the host continues a trailing assistant message verbatim instead of
+	 * treating it as a completed turn (Ollama, on both its native and OpenAI-compat
+	 * endpoints). Callers that need a committed output prefix (session titling)
+	 * read this before appending one. Rule-owned via `supports-assistant-prefill`.
+	 */
+	supportsAssistantPrefill?: boolean;
+	/**
 	 * Model id to send on the wire when it differs from `id`. Used by catalog
 	 * variants that present one upstream model under several local entries —
 	 * e.g. GitHub Copilot long-context variants (`claude-opus-4.7-1m` requests
@@ -1141,6 +1167,12 @@ export interface Model<TApi extends Api = Api> {
 	name: string;
 	api: TApi;
 	provider: Provider;
+	/**
+	 * Discovery backend whose catalog policy applies when it differs from the
+	 * credential-bearing provider id. Persisted so cached and rebuilt custom
+	 * providers retain their transport backend's policy.
+	 */
+	providerType?: string;
 	baseUrl: string;
 	reasoning: boolean;
 	/**
@@ -1170,6 +1202,16 @@ export interface Model<TApi extends Api = Api> {
 	gitlabDuoWorkflowRootNamespaceId?: string;
 	/** Cursor `max_mode` request flag returned by `GetUsableModels` for premium models that require max mode. */
 	cursorMaxMode?: boolean;
+	/**
+	 * Per-wire-id `max_mode` markers for the members a collapsed Cursor row
+	 * routes to, recorded by `collapseVariants` from live `GetUsableModels`
+	 * rows. {@link cursorMaxMode} on a collapsed row is an OR across members,
+	 * so it cannot tell a `-low` route that needs no max mode from an Opus
+	 * `-fast` route that does; transports look the routed wire id up here
+	 * first. Absent on raw rows (their own `cursorMaxMode` already describes
+	 * their single wire id) and on bundled snapshots that predate discovery.
+	 */
+	cursorMaxModeRoutes?: Readonly<Record<string, boolean>>;
 	cost: ModelCost;
 	/** Premium Copilot requests charged per user-initiated request (defaults to 1). */
 	premiumMultiplier?: number;
@@ -1190,6 +1232,12 @@ export interface Model<TApi extends Api = Api> {
 	 */
 	omitMaxOutputTokens?: boolean;
 	headers?: Record<string, string>;
+	/**
+	 * Materialize config-backed headers immediately before a request. Catalog
+	 * inspection never invokes this hook; transports receive a cloned model
+	 * whose `headers` is a plain resolved record and whose hook is removed.
+	 */
+	resolveHeaders?: (signal?: AbortSignal) => Promise<Record<string, string> | undefined>;
 	/**
 	 * Streaming transport override. When `"pi-native"`, `streamSimple` routes
 	 * the request to the model's `baseUrl` via the auth-gateway's
@@ -1304,6 +1352,7 @@ export interface ModelSpec<TApi extends Api = Api> extends Omit<
 	| "requiresGlyphTokenization"
 	| "requiresCursorToolSchemaProjection"
 	| "requiresToolResultImageHoisting"
+	| "supportsAssistantPrefill"
 	| "supportsComputerUseConfig"
 > {
 	/** Sparse compatibility overrides; resolved into `Model.compat` by `buildModel`. */

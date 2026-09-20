@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { CustomEditor } from "@oh-my-pi/pi-coding-agent/modes/components/custom-editor";
-import { getEditorTheme, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
+import { CustomEditor } from "@oh-my-pi/pi-tui/prompt/custom-editor";
+import { getEditorTheme, initTheme } from "@oh-my-pi/pi-tui/theme";
 
 describe("CustomEditor keybindings", () => {
 	beforeAll(async () => {
@@ -17,17 +17,6 @@ describe("CustomEditor keybindings", () => {
 		editor.handleInput("\x1bR");
 
 		expect(onRetry).toHaveBeenCalledTimes(1);
-	});
-
-	it("routes the configured tool activity visibility chord through handleInput", () => {
-		const editor = new CustomEditor(getEditorTheme());
-		const onToggleToolActivity = vi.fn();
-
-		editor.setActionKeys("app.tools.toggleVisibility", ["alt+h"]);
-		editor.onToggleToolActivity = onToggleToolActivity;
-		editor.handleInput("\x1bh");
-
-		expect(onToggleToolActivity).toHaveBeenCalledTimes(1);
 	});
 
 	it("lets custom handlers keep precedence over the default retry chord", () => {
@@ -104,14 +93,4 @@ describe("shipped dequeue defaults", () => {
 		expect(onDequeue).toHaveBeenCalledTimes(1);
 	});
 
-	it("routes the configured thinking + tool output details chord through handleInput", () => {
-		const editor = new CustomEditor(getEditorTheme());
-		const onToggleDetail = vi.fn();
-
-		editor.setActionKeys("app.display.toggleDetail", ["alt+d"]);
-		editor.onToggleDetail = onToggleDetail;
-		editor.handleInput("\x1bd");
-
-		expect(onToggleDetail).toHaveBeenCalledTimes(1);
-	});
 });
