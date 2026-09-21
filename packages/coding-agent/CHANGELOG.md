@@ -18,6 +18,7 @@
 ### Fixed
 
 - Finished streamed rows now leave the live viewport the frame they freeze instead of waiting for the transcript to fill the window, so a reply taller than the window no longer clips its own beginning while it streams; this covers streamed prose and reasoning, and models whose wire can revise text it has already streamed (`stream-revision`) keep the previous finalize-time behavior ([#11276](https://github.com/can1357/oh-my-pi/issues/11276)).
+- Streaming no longer skips the blank line that separates a reply from the transcript above it: finished rows leave the live viewport the frame they freeze instead of waiting for the transcript to fill the window, so the live area only holds rows the terminal can actually show ([#11276](https://github.com/can1357/oh-my-pi/issues/11276)).
 - Fixed resume clutter: elide 0-turn sessions from the /resume menu; -c similarly skips empty sessions.
 - Fixed Edit calls getting stuck generating repeated closing tags after an empty `SM:AFTER` insertion.
 - Fixed Edit previews and application panicking on Unicode no-op edits and overlapping duplicate matches.

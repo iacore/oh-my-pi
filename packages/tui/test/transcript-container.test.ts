@@ -247,17 +247,19 @@ describe("TranscriptContainer", () => {
 		expect(viewport.length).toBeGreaterThan(1);
 	});
 
-	it("retires only the un-emitted final suffix", () => {
+	it("retires every frozen row whatever room is left, then only the un-emitted suffix", () => {
 		const transcript = new TranscriptContainer();
 		const block = new AppendBlock(["one", "two", "partial"], ["one", "two"]);
 		transcript.addChild(block);
 
+		// Both frozen rows leave the live viewport in one batch even though the
+		// transcript had room for three: retirement is not gated on the screen
+		// filling up, so the live area never holds more than the open tail.
 		const first = transcript.peekFinalizedBatch(80, 2)!;
-		expect(first.rows).toEqual(["one"]);
+		expect(first.rows).toEqual(["one", "two"]);
 		transcript.acknowledgeFinalizedBatch(first.id);
-		const second = transcript.peekFinalizedBatch(80, 1)!;
-		expect(second.rows).toEqual(["two"]);
-		transcript.acknowledgeFinalizedBatch(second.id);
+		expect(transcript.renderViewport(80, 2, frame)).toEqual(["partial"]);
+		expect(transcript.peekFinalizedBatch(80, 2)).toBeUndefined();
 
 		block.finalize(["one", "two", "final"]);
 		const suffix = transcript.peekFinalizedBatch(80, 0)!;

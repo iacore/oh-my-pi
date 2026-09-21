@@ -510,29 +510,25 @@ export class TranscriptContainer extends Container {
 			if (rows.length > 0) total += rows.length + (visible++ > 0 ? 1 : 0);
 		}
 		const overflowing = total > room || this.#liveCount() >= MAX_LIVE_BLOCKS;
-		if (policy === "pressure" && !overflowing) {
-			this.#pinnedFrontier = undefined;
-			return undefined;
-		}
+		if (!overflowing) this.#pinnedFrontier = undefined;
 
 		const head = this.#entries[this.#frontier];
 		if (
 			policy === "pressure" &&
-			total > room &&
 			head?.mode === "appendOnly" &&
 			!head.stableFrozen &&
 			head.state !== "committed" &&
 			head.emitted < head.stableRows.length
 		) {
-			// Emit as many finished rows as the overflow needs, in one batch. A
-			// fast stream adds finished rows quicker than one per pressure cycle,
-			// and the live region has to fall back under `room` to stay readable:
-			// rows left behind here are rows dropped from the top of the viewport.
-			const overflow = total - room;
+			// Every finished row leaves the live viewport in the frame it freezes,
+			// whatever the screen has room for. The live region then only holds rows
+			// that can still change, so its height is decided by the open paragraph
+			// rather than by the terminal: a reply taller than the window no longer
+			// clips its own beginning while it streams.
 			const before = this.#renderStablePrefix(head, head.emitted, width);
 			let emittedEnd = head.emitted;
 			let rows: readonly string[] = EMPTY_ROWS;
-			while (emittedEnd < head.stableRows.length && rows.length < overflow) {
+			while (emittedEnd < head.stableRows.length) {
 				const after = this.#renderStablePrefix(head, emittedEnd + 1, width);
 				if (!isRowPrefix(before, after) || after.length === before.length) {
 					if (emittedEnd === head.emitted) {
@@ -570,7 +566,7 @@ export class TranscriptContainer extends Container {
 			index++;
 		}
 		if (end === this.#frontier) {
-			if (policy === "pressure") this.#notePinnedFrontier();
+			if (policy === "pressure" && overflowing) this.#notePinnedFrontier();
 			return undefined;
 		}
 		this.#pinnedFrontier = undefined;
