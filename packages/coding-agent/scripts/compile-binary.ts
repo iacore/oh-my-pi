@@ -3,6 +3,7 @@
 import { USER_AGENT } from "@oh-my-pi/pi-utils/dirs";
 import * as path from "node:path";
 import { buildDocsIndexPayload } from "./generate-docs-index";
+import { createJsonParsePlugin } from "./json-parse-plugin";
 import { createLegacyPiVirtualModulePlugin } from "./legacy-pi-virtual-module";
 
 /** Native runtime dependencies always resolved from the on-demand install instead of embedded into compiled binaries. */
@@ -180,6 +181,7 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 				keepNames: true,
 			},
 			plugins: [
+				createJsonParsePlugin(),
 				await createLegacyPiVirtualModulePlugin(),
 				ggmlPlatformBinariesPlugin(
 					await resolveNodeLlamaCppRelease(options.repoRoot),
