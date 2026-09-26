@@ -92,5 +92,4 @@ describe("shipped dequeue defaults", () => {
 
 		expect(onDequeue).toHaveBeenCalledTimes(1);
 	});
-
 });

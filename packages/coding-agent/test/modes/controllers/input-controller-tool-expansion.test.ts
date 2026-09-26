@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "bun:test";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { cfgDisplayHideToolActivity, cfgDisplayHideToolOutputDetails } from "@oh-my-pi/pi-coding-agent/modes/settings";
+import { cfgHideThinkingBlock } from "@oh-my-pi/pi-coding-agent/session/settings";
 
 describe("InputController tool output expansion", () => {
 	it("expands children and forces a full repaint so every live block re-renders", () => {
@@ -60,7 +63,7 @@ describe("InputController tool activity visibility", () => {
 		const clear = vi.fn();
 		const addChild = vi.fn();
 		const rebuildChatFromMessages = vi.fn();
-		const set = vi.fn();
+		const settings = Settings.isolated();
 		const clearInlineImages = vi.fn();
 		const resetDisplay = vi.fn();
 		const showStatus = vi.fn();
@@ -68,7 +71,7 @@ describe("InputController tool activity visibility", () => {
 		const ctx = {
 			hideToolActivity: false,
 			toolOutputExpanded: true,
-			settings: { set },
+			settings,
 			chatContainer: { children, clear, addChild, setToolActivityVisible },
 			rebuildChatFromMessages,
 			showStatus,
@@ -81,7 +84,7 @@ describe("InputController tool activity visibility", () => {
 		controller.toggleToolActivityVisibility();
 
 		expect(ctx.hideToolActivity).toBe(true);
-		expect(set).toHaveBeenLastCalledWith("display.hideToolActivity", true);
+		expect(cfgDisplayHideToolActivity.get(settings)).toBe(true);
 		expect(ctx.chatContainer.children).toEqual(children);
 		expect(clear).not.toHaveBeenCalled();
 		expect(addChild).not.toHaveBeenCalled();
@@ -97,7 +100,7 @@ describe("InputController tool activity visibility", () => {
 
 		expect(ctx.hideToolActivity).toBe(false);
 		expect(ctx.toolOutputExpanded).toBe(false);
-		expect(set).toHaveBeenLastCalledWith("display.hideToolActivity", false);
+		expect(cfgDisplayHideToolActivity.get(settings)).toBe(false);
 		expect(ctx.chatContainer.children).toEqual(children);
 		expect(clear).not.toHaveBeenCalled();
 		expect(addChild).not.toHaveBeenCalled();
@@ -112,7 +115,10 @@ describe("InputController tool activity visibility", () => {
 
 describe("InputController assistant detail toggle", () => {
 	function createContext(overrides: Record<string, unknown> = {}) {
-		const set = vi.fn();
+		// A real isolated Settings: the toggles persist through the registered
+		// setting handles (`cfgHideThinkingBlock.set` / `cfgDisplayHideToolOutputDetails.set`),
+		// which write through `Settings.writeValue`, not a mocked `set`.
+		const settings = Settings.isolated();
 		const resetStableEmission = vi.fn();
 		const setToolOutputDetailsHidden = vi.fn();
 		const resetDisplay = vi.fn();
@@ -125,7 +131,7 @@ describe("InputController assistant detail toggle", () => {
 			hideToolOutputDetails: false,
 			hasDisplayableThinkingContent: false,
 			toolOutputExpanded: false,
-			settings: { set },
+			settings,
 			session: { agent: { hideThinkingSummary: false }, thinkingLevel: "high" },
 			chatContainer: { children: [assistant], setToolOutputDetailsHidden, resetStableEmission },
 			streamingComponent: undefined,
@@ -137,7 +143,7 @@ describe("InputController assistant detail toggle", () => {
 		} as unknown as InteractiveModeContext;
 		return {
 			ctx,
-			set,
+			settings,
 			resetStableEmission,
 			setToolOutputDetailsHidden,
 			resetDisplay,
@@ -149,7 +155,7 @@ describe("InputController assistant detail toggle", () => {
 	it("folds thinking and tool output on one gesture, then restores both", () => {
 		const {
 			ctx,
-			set,
+			settings,
 			resetStableEmission,
 			setToolOutputDetailsHidden,
 			resetDisplay,
@@ -162,8 +168,8 @@ describe("InputController assistant detail toggle", () => {
 
 		expect(ctx.hideThinkingBlock).toBe(true);
 		expect(ctx.hideToolOutputDetails).toBe(true);
-		expect(set).toHaveBeenCalledWith("hideThinkingBlock", true);
-		expect(set).toHaveBeenCalledWith("display.hideToolOutputDetails", true);
+		expect(cfgHideThinkingBlock.get(settings)).toBe(true);
+		expect(cfgDisplayHideToolOutputDetails.get(settings)).toBe(true);
 		expect(setHideThinkingBlock).toHaveBeenCalledWith(true);
 		expect(setToolOutputDetailsHidden).toHaveBeenCalledWith(true);
 		// One replay per gesture, not one per axis.
@@ -177,19 +183,21 @@ describe("InputController assistant detail toggle", () => {
 
 		expect(ctx.hideThinkingBlock).toBe(false);
 		expect(ctx.hideToolOutputDetails).toBe(false);
+		expect(cfgHideThinkingBlock.get(settings)).toBe(false);
+		expect(cfgDisplayHideToolOutputDetails.get(settings)).toBe(false);
 		expect(resetDisplay).toHaveBeenCalledTimes(2);
 		expect(showStatus).not.toHaveBeenCalled();
 	});
 
 	it("still folds tool output when thinking cannot be toggled", () => {
-		const { ctx, set, resetStableEmission, showStatus } = createContext({
+		const { ctx, settings, resetStableEmission, showStatus } = createContext({
 			session: { agent: { hideThinkingSummary: false }, thinkingLevel: "off" },
 		});
 
 		new InputController(ctx).toggleDetailVisibility();
 
 		expect(ctx.hideThinkingBlock).toBe(false);
-		expect(set).not.toHaveBeenCalledWith("hideThinkingBlock", expect.anything());
+		expect(cfgHideThinkingBlock.get(settings)).toBe(false);
 		expect(ctx.hideToolOutputDetails).toBe(true);
 		expect(resetStableEmission).toHaveBeenCalledTimes(1);
 		expect(showStatus).not.toHaveBeenCalled();
