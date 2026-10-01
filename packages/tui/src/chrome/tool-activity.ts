@@ -1,4 +1,6 @@
 import { type Component, Container } from "../tui";
+import { col } from "../native/describe";
+import type { NativeNode } from "../native/node";
 export interface ToolActivityComponent {
 	setToolActivityVisible(visible: boolean): void;
 }
@@ -18,6 +20,7 @@ export function supportsToolOutputDetails(component: Component): component is Co
 
 export class ToolActivityContainer extends Container implements ToolActivityComponent, ToolOutputDetailsComponent {
 	#visible = true;
+	#native: { children: readonly Component[]; visible: boolean; node: NativeNode } | undefined;
 
 	constructor(component: Component | Component[]) {
 		super();
@@ -56,5 +59,22 @@ export class ToolActivityContainer extends Container implements ToolActivityComp
 	override render(width: number): readonly string[] {
 		if (!this.#visible) return [];
 		return super.render(width);
+	}
+
+	/** The wrapped children; hidden tool activity stays mounted so toggling it is one prop change. */
+	override describe(): NativeNode {
+		const cached = this.#native;
+		const children = this.children;
+		if (
+			cached?.visible === this.#visible &&
+			cached.children.length === children.length &&
+			cached.children.every((child, index) => child === children[index])
+		) {
+			return cached.node;
+		}
+		const snapshot = children.slice();
+		const node = col(snapshot, this.#visible ? { role: "omp.activity" } : { role: "omp.activity", hidden: true });
+		this.#native = { children: snapshot, visible: this.#visible, node };
+		return node;
 	}
 }

@@ -653,7 +653,7 @@ export class AcpAgent implements Agent {
 		return {
 			protocolVersion: PROTOCOL_VERSION,
 			agentInfo: {
-				name: "oh-my-pi",
+				name: "omp",
 				title: "omp",
 				version: VERSION,
 			},
@@ -2208,6 +2208,7 @@ export class AcpAgent implements Agent {
 			orchestrationCacheRead: usage.orchestrationCacheRead,
 			premiumRequests: usage.premiumRequests,
 			cost: usage.cost,
+			subagentCost: usage.subagentCost,
 		};
 	}
 
