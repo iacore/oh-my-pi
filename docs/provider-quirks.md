@@ -909,9 +909,9 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/fire
 - **Usage Accounting**: Token usage is processed via standard `openai-completions` accounting in `calculateOpenAIUsageAccounting` (`packages/ai/src/providers/openai-shared.ts`), extracting `prompt_tokens`, `completion_tokens`, `prompt_tokens_details.cached_tokens`, and `completion_tokens_details.reasoning_tokens`.
 
 ### Catalog model handling
-- **Provider entry (`fireworks`)**: `packages/catalog/src/compat/rules/providers/fireworks.kdl` declares default model `kimi-k2.7-code`. Environment keys: `FIREWORKS_API_KEY`.
-- **Control-Plane Discovery**: `fireworksModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) enumerates models via control-plane catalog `GET /v1/accounts/fireworks/models?filter=supports_serverless=true` instead of `/v1/models`, converting resource names (`accounts/fireworks/models/<id>`) to public catalog IDs using `toFireworksPublicModelId`. Internal account resource IDs are pruned during catalog generation in `scripts/generate-models.ts`.
-- **Fast Variant Seeding**: `buildFireworksFastSeed` (`packages/catalog/src/provider-models/openai-compat.ts`) programmatically generates `-fast` catalog seeds (e.g., `kimi-k2.7-code-fast`, `glm-5.1-fast`) paired to curated base models, retaining base pricing while targeting high-speed router wire paths.
+- **Provider entry (`fireworks`)**: `packages/catalog/src/compat/rules/providers/fireworks.kdl` declares default model `kimi-k3`. Environment keys: `FIREWORKS_API_KEY`.
+- **Control-Plane Discovery**: `fireworksModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) enumerates models via control-plane catalog `GET /v1/accounts/fireworks/models?filter=supports_serverless=true` instead of `/v1/models`, converting resource names (`accounts/fireworks/models/<id>`) to public catalog IDs using `toFireworksPublicModelId`. Internal account resource IDs are pruned during catalog generation in `scripts/generate-models.ts`. Discovered models take their price from Fireworks' own models.dev rows (`fireworks-ai`, keyed by wire id) and fall back to the bare-id reference's price only when Fireworks publishes none.
+- **Fast Variant Seeding**: `buildFireworksFastSeed` (`packages/catalog/src/provider-models/openai-compat.ts`) programmatically generates `-fast` catalog seeds (e.g., `kimi-k3-fast`, `glm-5.3-fast`) paired to curated base models, overriding only the cost with Fast pricing while targeting high-speed router wire paths.
 - **Kimi Family Output Token Caps**: `clampFireworksKimiMaxTokens` (`packages/catalog/src/provider-models/openai-compat.ts`) clamps output budget `maxTokens` to `FIREWORKS_KIMI_MAX_TOKENS = 32_768` for Kimi K2.5/K2.6 models (`isFireworksKimiK2ModelId`) to prevent runaway reasoning traces caused by Fireworks' reported `max_completion_tokens: 65536`. `kimi-k2.7-code` is explicitly excluded from this cap and allowed up to its full output budget (`FIREWORKS_KIMI_K27_CODE_MAX_TOKENS = 65_536`).
 
 ## GitHub Copilot (`github-copilot`)
@@ -1190,6 +1190,21 @@ LiteLLM is an open-source AI proxy and gateway that unifies access to multiple L
 - **Fallback discovery & display names (`packages/catalog/src/provider-models/openai-compat.ts`)**: If rich endpoints fail, discovery falls back to `/v1/models` (`fetchOpenAICompatibleModels`), applies the same mode filtering, and resolves specs against `models.dev` references. Strips reseller multiplier suffixes (e.g., `(1.5x usage)`) from display names.
 - **Compatibility overrides (`packages/catalog/src/provider-models/openai-compat.ts`)**: Hardcodes `compat.supportsStore: false` and `compat.supportsDeveloperRole: false` for all resolved models.
 
+## LithosAI (`lithosai`)
+LithosAI runs a hosted inference engine at `https://api.lithosai.cloud/v1`, serving open-weight models (Kimi K3, DeepSeek V4.1 Flash, GLM-5.3) through the OpenAI Chat Completions transport.
+
+### Special casings
+- **Roster-only discovery**: `lithosAiModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) fetches `GET /v1/models` with the stored key. Rows carry `{id, object, created, owned_by}` and nothing else, so no limits, tariffs, or capability flags are derived; every row keeps the discovery defaults and inherits the provider-wide wire shape from `packages/catalog/src/compat/rules/providers/lithosai.kdl`. The roster names each model family in base, `-fast`, `-ultra`, and `-ultra-chat` tiers, and no rule here names one.
+
+### Auth & usage
+- Login kind `api-key` is declared in `packages/catalog/src/compat/rules/auth/lithosai.kdl`. Environment keys: `LITHOSAI_API_KEY`. Validation uses `models-endpoint` against `https://api.lithosai.cloud/v1/models`, which answers 401 `invalid API key` without a valid key (observed 2026-10-03) and 200 for a valid key even when the organization's prepaid balance is empty.
+- **Credential-scoped cache**: `lithosai` is listed in `CREDENTIAL_SCOPED_MODEL_CACHE_PROVIDERS` (`packages/catalog/src/provider-models/cache-provider-id.ts`), so the authoritative roster is namespaced by both the credential and the normalized endpoint — a second organization's key, or a self-hosted engine, never reads another namespace's rows.
+
+### Catalog model handling
+- **Provider entry (`lithosai`)**: `packages/catalog/src/compat/rules/providers/lithosai.kdl` declares default model `moonshotai/Kimi-K3`. Environment keys: `LITHOSAI_API_KEY`.
+- **No `discovery` node**: the roster is organization-scoped and needs a live credential, so a catalog regeneration must never freeze one account's snapshot into `models.json`; `dynamic-models-authoritative` prunes rows the endpoint drops.
+- Runtime manager: `lithosAiModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
+
 ## LM Studio (`lm-studio`)
 LM Studio is a local OpenAI-compatible model server running on user hardware (defaulting to `http://127.0.0.1:1234/v1`). It uses the [OpenAI Chat Completions](#openai-chat-completions) transport (`api: "openai-completions"`) to stream chat completions and tool calls.
 
@@ -1270,6 +1285,7 @@ The MiniMax Token Plan provider (`minimax-code`, alongside its mainland China re
 ### Catalog model handling
 - **Provider entry (`minimax-code`)**: `packages/catalog/src/compat/rules/providers/minimax-code.kdl` declares default model `MiniMax-M3`. Environment keys: `MINIMAX_CODE_API_KEY`.
 - **1M Context Tier Override**: Policy generation (`packages/catalog/scripts/generated-policies.ts`) explicitly overrides `MiniMax-M3` context windows for `minimax-code` and `minimax-code-cn` to report the documented 1,000,000-token tier instead of the upstream 512,000-token pricing boundary.
+- **Pay-as-you-go equivalent pricing**: Upstream reports $0 for every Token Plan model. The `minimax-code` / `minimax-code-cn` `pricing-peer` rules in `runtime/behavior.kdl` price rows at their `minimax` / `minimax-cn` list prices at build time (Credits overflow is billed at the PAYG list price), so usage and `omp stats` show PAYG-equivalent cost. `MiniMax-M3.1-Flash-Preview` has no published price and borrows the `MiniMax-M3` rate as an estimate. `applyPricingPeerFallback` (`packages/catalog/scripts/generated-policies.ts`) fills only zero-cost rows and tries a rule's alias `peer-id` before the row's own id, across peers in declared order.
 - **Host Matching**: Provider host mapping in `packages/catalog/src/hosts.ts` associates `urlMarkers` `api.minimax.io` and `api.minimaxi.com` with `minimax`, `minimax-code`, and `minimax-code-cn`.
 
 ## MiniMax Token Plan (China) (`minimax-code-cn`)
