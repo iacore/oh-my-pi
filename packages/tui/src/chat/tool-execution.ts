@@ -44,6 +44,7 @@ import {
 	formatStatusIcon,
 	replaceTabs,
 	resolveImageOptions,
+	shortenEmbeddedPaths,
 } from "../render/render-utils";
 import type { XdevMountedState } from "../tools/xdev";
 import { isFramedBlockComponent, markFramedBlockComponent, renderStatusLine, WidthAwareText } from "../render/index";
@@ -1284,7 +1285,17 @@ export class ToolExecutionComponent extends Container {
 
 	#renderCompact(width: number, singleRow: boolean = this.#allocation === 1): readonly string[] {
 		const summary = this.#activitySummary();
-		const detail = summary.detail ? theme.fg("muted", ` · ${summary.detail.replace(/\s+/g, " ")}`) : "";
+		// Any summary can carry model text — `hub` targets, xdev inner arguments, a
+		// bare command, an extension-supplied label — and this row is the whole card
+		// under `display.hideToolOutputDetails`, so terminal control bytes come out
+		// before styling. `sanitizeText` returns the input untouched when there is
+		// nothing to strip, but keeps tabs and newlines, which would break the
+		// one-line row; both halves collapse their whitespace and drop any
+		// home-prefixed path they embed (`cat /home/me/x`).
+		const label = shortenEmbeddedPaths(sanitizeText(summary.label).replace(/\s+/g, " "));
+		const detail = summary.detail
+			? theme.fg("muted", ` · ${shortenEmbeddedPaths(sanitizeText(summary.detail).replace(/\s+/g, " "))}`)
+			: "";
 		// Elapsed ticks only while the call is genuinely running; a settled
 		// placeholder row must not read as live ("Todo · running 0s").
 		const elapsed =
@@ -1295,12 +1306,21 @@ export class ToolExecutionComponent extends Container {
 					)
 				: "";
 		const text = truncateToWidth(
-			`${theme.fg("toolTitle", theme.bold(summary.label))}${detail}${elapsed}`,
+			`${theme.fg("toolTitle", theme.bold(label))}${detail}${elapsed}`,
 			Math.max(1, width - 4),
 		);
 		if (singleRow) {
-			const glyph = this.#spinnerFrame === undefined ? "•" : (theme.spinnerFrames[this.#spinnerFrame] ?? "•");
-			const styledGlyph = theme.fg(this.#spinnerFrame === undefined ? "dim" : "muted", glyph);
+			// A folded card is the whole row, so a settled failure has to stay
+			// legible here: the neutral bullet would read as success. A benign skip
+			// carries `isError` too but is normal steering flow, and the full card
+			// renders it neutrally (#7199), so it stays neutral here as well. The
+			// spinner keeps its own frames while the call is still running.
+			const failed = !this.#isRunning() && this.#result?.isError === true && !this.#isBenignSkip();
+			const styledGlyph = failed
+				? formatStatusIcon("error", theme)
+				: this.#spinnerFrame === undefined
+					? theme.fg("dim", "•")
+					: theme.fg("muted", theme.spinnerFrames[this.#spinnerFrame] ?? "•");
 			return [truncateToWidth(`${styledGlyph} ${text}`, width)];
 		}
 		return [truncateToWidth(`${theme.fg("dim", "╭─")} ${text}`, width), theme.fg("dim", "╰")];
@@ -1325,6 +1345,8 @@ export class ToolExecutionComponent extends Container {
 			for (const key of ["command", "path", "input"] as const) {
 				const value = this.#args[key];
 				if (typeof value === "string" && value.length > 0) {
+					// Control bytes, whitespace, and home-prefixed paths are handled
+					// where the row is assembled, for every summary alike.
 					return { label: this.#toolLabel, detail: value.split("\n", 1)[0] };
 				}
 			}

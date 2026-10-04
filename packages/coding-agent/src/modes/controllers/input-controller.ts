@@ -2760,7 +2760,8 @@ export class InputController {
 			) {
 				child.setExpanded(false);
 			} else if (child instanceof AssistantMessageComponent) {
-				child.setToolResultImagesVisible(!this.ctx.hideToolActivity);
+				// Folding tool output takes its images with it, so visibility needs both flags.
+				child.setToolResultImagesVisible(!this.ctx.hideToolActivity && !this.ctx.hideToolOutputDetails);
 			}
 		}
 		this.ctx.chatContainer.setToolActivityVisible(!this.ctx.hideToolActivity);
@@ -2809,8 +2810,13 @@ export class InputController {
 	 * would only leave a transcript row that can never be dismissed.
 	 */
 	toggleDetailVisibility(): void {
-		if (!this.#thinkingBlocksUntoggleable()) this.#applyThinkingBlockVisibility(!this.ctx.hideThinkingBlock);
-		this.#applyToolOutputDetailsHidden(!this.ctx.hideToolOutputDetails);
+		const thinkingToggleable = !this.#thinkingBlocksUntoggleable();
+		// One target state for both axes: a half-folded transcript (thinking hidden
+		// by its own toggle, tool details still visible, or the reverse) folds fully
+		// on the next press instead of swapping which half is visible.
+		const hidden = !(this.ctx.hideToolOutputDetails && (!thinkingToggleable || this.ctx.hideThinkingBlock));
+		if (thinkingToggleable) this.#applyThinkingBlockVisibility(hidden);
+		this.#applyToolOutputDetailsHidden(hidden);
 		this.#resetTranscriptRendering();
 	}
 
@@ -2847,6 +2853,14 @@ export class InputController {
 		this.ctx.hideToolOutputDetails = hidden;
 		cfgDisplayHideToolOutputDetails.set(this.ctx.settings, hidden);
 		this.ctx.chatContainer.setToolOutputDetailsHidden(hidden);
+
+		// Read-result images belong to the assistant message, not the tool card, so
+		// the fold has to reach them separately; they stay hidden while tool
+		// activity itself is off.
+		const imagesVisible = !hidden && !this.ctx.hideToolActivity;
+		for (const child of this.ctx.chatContainer.children) {
+			if (child instanceof AssistantMessageComponent) child.setToolResultImagesVisible(imagesVisible);
+		}
 	}
 
 	/**

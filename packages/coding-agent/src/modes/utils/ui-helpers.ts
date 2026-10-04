@@ -36,7 +36,11 @@ import {
 import { SkillMessageComponent } from "@oh-my-pi/pi-tui/chat/skill-message";
 import { StrippedToolCallsPlaceholder } from "@oh-my-pi/pi-tui/chat/stripped-tool-calls-placeholder";
 import { imageContent, textContent } from "@oh-my-pi/pi-tui/chat/transcript-entry";
-import { ToolActivityContainer } from "@oh-my-pi/pi-tui/chrome/tool-activity";
+import {
+	ToolActivityContainer,
+	isToolActivityComponent,
+	supportsToolOutputDetails,
+} from "@oh-my-pi/pi-tui/chrome/tool-activity";
 import { ToolExecutionComponent, type ToolExecutionHandle, toolRenderName } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { TranscriptBlock, TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { createUsageRowBlock, turnElapsedMs } from "@oh-my-pi/pi-tui/overlays/usage-row";
@@ -921,6 +925,25 @@ export class UiHelpers {
 		return true;
 	}
 
+	/**
+	 * A replay yields to terminal input between entries, so a display toggle that
+	 * landed mid-replay reached only the staged container. `addChild` stamps a
+	 * container's own flags onto the blocks it takes, so the container a replay
+	 * hands children back to has to carry the current presentation first. Hosts
+	 * may pass a bare container, so ask for the capability rather than assuming
+	 * it.
+	 */
+	#syncTranscriptVisibility(container: TranscriptContainer): void {
+		if (isToolActivityComponent(container)) container.setToolActivityVisible(!this.ctx.hideToolActivity);
+		if (supportsToolOutputDetails(container)) container.setToolOutputDetailsHidden(this.ctx.hideToolOutputDetails);
+		// Tool-result images live on the assistant message rather than on the tool
+		// card, and no container capability reaches them, so they are applied here.
+		const imagesVisible = !this.ctx.hideToolActivity && !this.ctx.hideToolOutputDetails;
+		for (const child of container.children) {
+			if (child instanceof AssistantMessageComponent) child.setToolResultImagesVisible(imagesVisible);
+		}
+	}
+
 	async renderInitialMessages(options: RenderInitialMessagesOptions = {}): Promise<void> {
 		// Collapsed replay keeps in-flight calls so pending tools remain routable during mid-turn rebuilds.
 		let context = this.ctx.viewSession.buildTranscriptSessionContext({
@@ -1012,6 +1035,12 @@ export class UiHelpers {
 			const replayedChatChildren = [...stagedChatContainer.children];
 			stagedChatContainer.clear();
 			this.ctx.chatContainer = visibleChatContainer;
+			// The replay yields to terminal input between entries, so a display
+			// setting toggled mid-replay already reached the staged container while
+			// this one kept the older flags. `addChild` below stamps the visible
+			// container's flags onto every transferred block, so re-sync them here or
+			// the replay would lay out under the stale presentation.
+			this.#syncTranscriptVisibility(visibleChatContainer);
 			if (preservedChatChildren) {
 				visibleChatContainer.clear();
 			} else {
@@ -1046,6 +1075,10 @@ export class UiHelpers {
 			}
 		} finally {
 			if (!committed) {
+				// A replay that failed mid-flight leaves the visible container showing
+				// the presentation it had before the attempt, while the toggle that
+				// landed during the yield already moved the context and the setting.
+				this.#syncTranscriptVisibility(visibleChatContainer);
 				this.ctx.chatContainer = visibleChatContainer;
 				this.ctx.transcriptMessageComponents = previousTranscriptMessageComponents;
 				this.ctx.pendingTools = previousPendingTools;

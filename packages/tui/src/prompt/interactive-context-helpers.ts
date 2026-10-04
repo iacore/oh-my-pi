@@ -18,6 +18,7 @@ export interface AssistantMessageHost {
 	readonly proseOnlyThinking: boolean;
 	readonly assistantImagesVisible: boolean;
 	readonly hideToolActivity: boolean;
+	readonly hideToolOutputDetails: boolean;
 	readonly toolOutputExpanded: boolean;
 	readonly ui: { requestRender(): void; readonly imageBudget: ImageBudget };
 	resolveAssistantMessageLinks(texts: readonly string[]): Promise<ReadonlyMap<string, string>>;
@@ -114,7 +115,8 @@ export function createAssistantMessageComponent(
 		linkTargets,
 	);
 	component.setImagesVisible(ctx.assistantImagesVisible);
-	component.setToolResultImagesVisible(!ctx.hideToolActivity);
+	// Read-result images are part of the tool output body, so both switches gate them.
+	component.setToolResultImagesVisible(!ctx.hideToolActivity && !ctx.hideToolOutputDetails);
 	component.setExpanded(ctx.toolOutputExpanded);
 	// A wire the `stream-revision` axis marks `possible` can rewrite text it has
 	// already streamed; published rows are unrecoverable once they reach native

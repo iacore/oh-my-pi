@@ -1,8 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import * as os from "node:os";
 import { ReadToolGroupComponent } from "@oh-my-pi/pi-tui/chat/read-tool-group";
 import { ToolExecutionComponent } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
-import { initTheme } from "@oh-my-pi/pi-tui/theme";
+import { formatStatusIcon } from "@oh-my-pi/pi-tui/render/render-utils";
+import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
 import type { TUI } from "@oh-my-pi/pi-tui";
 
 const uiStub = { requestRender() {}, requestComponentRender() {}, clearInlineImages() {} } as unknown as TUI;
@@ -82,5 +84,376 @@ describe("tool output details", () => {
 		const folded = plain(group.render(120));
 		expect(folded).toContain("example.ts");
 		expect(folded).not.toContain("line 1");
+	});
+
+	it("shortens a home-directory path in the folded summary", () => {
+		const home = os.homedir();
+		// No built-in renderer for this name, so the generic summary supplies the row.
+		const card = new ToolExecutionComponent(
+			"custom-thing",
+			{ path: `${home}/projects/notes.md` },
+			{},
+			undefined,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const folded = plain(card.render(120));
+
+			expect(folded).toContain("~/projects/notes.md");
+			expect(folded).not.toContain(home);
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("strips terminal control bytes out of a folded summary", () => {
+		const card = new ToolExecutionComponent(
+			"custom-thing",
+			{ command: "echo \u0007banner\u001b[2J" },
+			{},
+			undefined,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const row = card.render(120).join("");
+
+			expect(row).not.toContain("\u0007");
+			expect(row).not.toContain("\u001b[2J");
+			expect(Bun.stripANSI(row)).toContain("echo banner");
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("shortens a home-directory argument inside a device summary", () => {
+		const home = os.homedir();
+		// `write` targeting a device delegates its summary to the xdev helper, which
+		// echoes inner arguments such as `path` verbatim.
+		const card = new ToolExecutionComponent(
+			"write",
+			{ path: "xd://grep", content: JSON.stringify({ pattern: "needle", path: `${home}/project` }) },
+			{},
+			undefined,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const row = plain(card.render(120));
+
+			expect(row).toContain("~/project");
+			expect(row).not.toContain(home);
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("collapses whitespace in a multi-line tool label", () => {
+		// Extension and MCP tools supply their own label, and `sanitizeText` keeps
+		// tabs and newlines, so a folded row would otherwise carry extra lines.
+		const card = new ToolExecutionComponent(
+			"custom-thing",
+			{ command: "ls" },
+			{},
+			{ label: "Grep\tFiles\nNow" } as never,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const rows = card.render(120);
+
+			expect(rows).toHaveLength(1);
+			expect(plain(rows)).toContain("Grep Files Now");
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("shortens a home path embedded in a folded command", () => {
+		const home = os.homedir();
+		const card = new ToolExecutionComponent(
+			"custom-thing",
+			{ command: `cat ${home}/notes.md` },
+			{},
+			undefined,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const row = plain(card.render(120));
+
+			expect(row).toContain("cat ~/notes.md");
+			expect(row).not.toContain(home);
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("keeps a folded read group to one row per call", () => {
+		const longPath = `/${"segment-".repeat(12)}file.ts`;
+		const group = new ReadToolGroupComponent({ showContentPreview: true });
+		group.updateArgs({ path: longPath }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1\nline 2" }] }, false, "read-0");
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(40);
+
+		expect(rows).toHaveLength(1);
+		expect(Bun.stringWidth(plain(rows))).toBeLessThanOrEqual(40);
+	});
+
+	it("collapses a multi-target folded read call onto its own row", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "src/one.ts:1-5, src/two.ts:9-12" }, "read-0");
+		group.updateResult(
+			{
+				content: [{ type: "text", text: "combined" }],
+				details: { displayReadTargets: ["src/one.ts:1-5", "src/two.ts:9-12"] },
+			},
+			false,
+			"read-0",
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(120);
+
+		expect(rows).toHaveLength(1);
+		expect(plain(rows)).toContain("one.ts:1-5");
+		expect(plain(rows)).toContain("two.ts:9-12");
+	});
+
+	it("keeps one folded row per call when a group holds several reads", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "/tmp/a.ts" }, "read-a");
+		group.updateArgs({ path: "/tmp/b.ts" }, "read-b");
+		group.updateResult({ content: [{ type: "text", text: "a" }] }, false, "read-a");
+		group.updateResult({ content: [{ type: "text", text: "b" }] }, false, "read-b");
+		group.attachUsage(
+			["read-a"],
+			{
+				input: 1111,
+				output: 11,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1122,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			1000,
+			500,
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(120);
+		const row = plain(rows);
+
+		expect(rows).toHaveLength(2);
+		expect(row.split("\n")[0]).toContain("a.ts");
+		expect(row.split("\n")[0]).toContain("1.1K");
+		expect(row.split("\n")[1]).toContain("b.ts");
+		expect(row.split("\n")[1]).not.toContain("1.1K");
+	});
+
+	it("shortens a home path inside a folded label", () => {
+		const home = os.homedir();
+		const card = new ToolExecutionComponent(
+			"custom-thing",
+			{ command: "ls" },
+			{},
+			{ label: `Inspect ${home}/repo` } as never,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const row = plain(card.render(120));
+
+			expect(row).toContain("Inspect ~/repo");
+			expect(row).not.toContain(home);
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
+	it("keeps a folded read group to one row while usage is shown", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "/tmp/usage.ts" }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1" }] }, false, "read-0");
+		group.attachUsage(
+			["read-0"],
+			{
+				input: 1111,
+				output: 11,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1122,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			1000,
+			500,
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(120);
+
+		expect(rows).toHaveLength(1);
+		expect(plain(rows)).toContain("usage.ts");
+		expect(plain(rows)).toContain("1.1K");
+	});
+
+	it("strips control bytes from a folded read target", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "/tmp/safe.ts\u0007\nsecond\u001b[2J" }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1" }] }, false, "read-0");
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(120);
+		const row = rows.join("");
+
+		expect(rows).toHaveLength(1);
+		expect(row).not.toContain("\u0007");
+		expect(row).not.toContain("\u001b[2J");
+		expect(Bun.stripANSI(row)).toContain("/tmp/safe.ts second");
+	});
+
+	it("keeps the usage suffix on a folded read row whose target fills the width", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: `/${"segment-".repeat(12)}file.ts` }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1" }] }, false, "read-0");
+		group.attachUsage(
+			["read-0"],
+			{
+				input: 1111,
+				output: 11,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1122,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			1000,
+			500,
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		// Wide enough for the usage *and* more than half the row for the target.
+		const rows = group.render(120);
+		const row = rows.join("");
+
+		expect(rows).toHaveLength(1);
+		expect(Bun.stringWidth(Bun.stripANSI(row))).toBeLessThanOrEqual(120);
+		expect(Bun.stripANSI(row)).toContain("1.1K");
+	});
+
+	it("keeps a folded read row inside a narrow terminal that cannot fit its usage", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "/tmp/usage.ts" }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1" }] }, false, "read-0");
+		group.attachUsage(
+			["read-0"],
+			{
+				input: 1111,
+				output: 11,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1122,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			1000,
+			500,
+			new Date(2026, 0, 2, 3, 4, 5).getTime(),
+			1_234_567,
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(24);
+
+		expect(rows).toHaveLength(1);
+		expect(Bun.stringWidth(Bun.stripANSI(rows[0] ?? ""))).toBeLessThanOrEqual(24);
+	});
+
+	it("keeps the read summary on a row too narrow for its usage", () => {
+		const group = new ReadToolGroupComponent({ showContentPreview: false });
+		group.updateArgs({ path: "/tmp/usage.ts" }, "read-0");
+		group.updateResult({ content: [{ type: "text", text: "line 1" }] }, false, "read-0");
+		group.attachUsage(
+			["read-0"],
+			{
+				input: 1111,
+				output: 11,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1122,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			1000,
+			500,
+			new Date(2026, 0, 2, 3, 4, 5).getTime(),
+			1_234_567,
+		);
+
+		group.setToolOutputDetailsHidden(true);
+
+		const rows = group.render(10);
+
+		expect(rows).toHaveLength(1);
+		expect(Bun.stringWidth(Bun.stripANSI(rows[0] ?? ""))).toBeLessThanOrEqual(10);
+		// The call itself must still be identifiable.
+		expect(Bun.stripANSI(rows[0] ?? "")).toContain("Read");
+	});
+
+	it("keeps an interrupted call neutral while folded", () => {
+		// Steering interrupts a pending call and reports `isError`; the full card
+		// renders the placeholder neutrally, so the folded row must not claim failure.
+		const skipped = new ToolExecutionComponent("custom-thing", { command: "sleep 30" }, {}, undefined, uiStub);
+		skipped.updateResult(
+			{
+				content: [{ type: "text", text: "skipped" }],
+				isError: true,
+				details: { source: "interrupt_skipped", __synthetic: true },
+			},
+			false,
+		);
+		try {
+			skipped.setToolOutputDetailsHidden(true);
+
+			const row = plain(skipped.render(120));
+
+			expect(row.startsWith(Bun.stripANSI(formatStatusIcon("error", theme)))).toBe(false);
+		} finally {
+			skipped.stopAnimation();
+		}
+	});
+
+	it("keeps a failed call distinguishable from a successful one while folded", () => {
+		const failed = new ToolExecutionComponent("custom-thing", { command: "exit 1" }, {}, undefined, uiStub);
+		failed.updateResult({ content: [{ type: "text", text: "boom" }], isError: true }, false);
+		const succeeded = new ToolExecutionComponent("custom-thing", { command: "exit 1" }, {}, undefined, uiStub);
+		succeeded.updateResult({ content: [{ type: "text", text: "fine" }], isError: false }, false);
+		try {
+			failed.setToolOutputDetailsHidden(true);
+			succeeded.setToolOutputDetailsHidden(true);
+
+			const failedRow = plain(failed.render(120));
+			const succeededRow = plain(succeeded.render(120));
+			const errorGlyph = Bun.stripANSI(formatStatusIcon("error", theme));
+
+			expect(failedRow.startsWith(errorGlyph)).toBe(true);
+			expect(succeededRow.startsWith(errorGlyph)).toBe(false);
+		} finally {
+			failed.stopAnimation();
+			succeeded.stopAnimation();
+		}
 	});
 });
