@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The composer's focused-agent header shows the interrupt key as the way back to main only while the viewed agent is idle; while it runs the exit crumb shows the double-←← gesture, since the interrupt key stops the turn.
+
 ## [18.5.1] - 2026-10-03
 
 ### Added
