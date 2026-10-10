@@ -11,10 +11,12 @@
  * already attached the image, which produced the asymmetric "for image I need
  * control+v which is very odd" symptom.
  *
- * Defended contract: when the clipboard text is an explicit image file path,
+ * Defended contract: with `paste.imagePathAttachment` on — as this suite
+ * opts in — when the clipboard text is an explicit image file path,
  * `handleImagePaste` MUST load and attach the image, NEVER paste the path as
- * text. Non-image text falls through to the existing #1628 text-paste
- * behavior.
+ * text. With the setting off (the default), the path lands as text instead;
+ * see `paste-image-path-attachment.test.ts`. Non-image text falls through to
+ * the existing #1628 text-paste behavior either way.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -70,7 +72,10 @@ describe("InputController.handleImagePaste (issue #3506)", () => {
 		imgPath = path.join(tmpDir, "screenshot.png");
 		await fs.writeFile(imgPath, ONE_PX_PNG);
 		resetSettingsForTest();
-		await Settings.init({ inMemory: true, overrides: { "images.autoResize": false } });
+		await Settings.init({
+			inMemory: true,
+			overrides: { "images.autoResize": false, "paste.imagePathAttachment": true },
+		});
 	});
 
 	afterEach(async () => {

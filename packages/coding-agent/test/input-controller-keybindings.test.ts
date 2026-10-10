@@ -28,6 +28,7 @@ type FakeEditor = {
 	onSelectModelTemporary?: () => void;
 	onSelectModel?: () => void;
 	onPasteImage?: () => Promise<boolean>;
+	onPasteImagePath?: (path: string) => void | Promise<void>;
 	onCopyPrompt?: () => void;
 
 	onRetry?: () => void;
@@ -346,6 +347,22 @@ describe("InputController keybinding setup", () => {
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(1, { temporaryOnly: true });
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(2);
 		expect(spies.resetDisplayAfterAppearanceRefresh).toHaveBeenCalledTimes(1);
+	});
+
+	it("installs the image-path paste handler only when paste.imagePathAttachment is on", async () => {
+		const off = await createContext();
+		new off.InputController(off.ctx).setupKeyHandlers();
+		expect(off.editor.onPasteImagePath).toBeUndefined();
+
+		const settingsState = beginSettingsTest();
+		try {
+			await Settings.init({ inMemory: true, overrides: { "paste.imagePathAttachment": true } });
+			const on = await createContext();
+			new on.InputController(on.ctx).setupKeyHandlers();
+			expect(typeof on.editor.onPasteImagePath).toBe("function");
+		} finally {
+			restoreSettingsTestState(settingsState);
+		}
 	});
 
 	it("enters Python mode only once whitespace follows a typed sigil", async () => {
@@ -758,7 +775,7 @@ describe("InputController image paste into an image-accepting prompt", () => {
 
 	beforeEach(async () => {
 		settingsState = beginSettingsTest();
-		await Settings.init({ inMemory: true });
+		await Settings.init({ inMemory: true, overrides: { "paste.imagePathAttachment": true } });
 		tempDir = await TempDir.create("@omp-prompt-image-");
 	});
 
