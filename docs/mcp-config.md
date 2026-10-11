@@ -69,7 +69,7 @@ Add this line at the top of the file for editor autocomplete and validation:
 }
 ```
 
-OMP now writes this automatically when `/mcp add`, `/mcp enable`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update an OMP-managed MCP file.
+OMP now writes this automatically when `/mcp add`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update an OMP-managed MCP file.
 
 ## File shape
 
@@ -93,7 +93,7 @@ Top-level keys:
 
 - `$schema` — optional JSON Schema URL for tooling
 - `mcpServers` — map of server name to server config
-- `disabledServers` — active-profile user denylist; it hides a discovered server by name regardless of the source entry's `enabled` value
+- `disabledServers` — active-profile user denylist; it hides a discovered server by name regardless of the source entry's `enabled` value. A session-scoped `/mcp enable` (or the `mcp` tool) overrides it for the current session only.
 - `enabledServers` — active-profile user allowlist; it can force-enable a same-named entry whose source says `enabled: false`, but `disabledServers` still wins
 
 The config writer accepts names up to 100 characters containing letters, numbers, `_`, `-`, `.`, `:`, and single spaces between non-space name segments. The bundled schema omits colons and spaces from its name pattern, so names such as `cloudflare:cloudflare-api` or `MaaS Slack` may be valid at runtime while an editor reports a schema error.
@@ -456,7 +456,30 @@ The active profile's user file supplies two cross-source overrides:
 }
 ```
 
-`/mcp enable` and `/mcp disable` update `enabled` directly when the definition is in an OMP-owned writable file. OMP does not mutate another tool's config: for such sources, those commands maintain the user-level allowlist or denylist instead and remove a conflicting stale override.
+`/mcp disable` updates `enabled` to `false` directly when the definition is in an OMP-owned writable file. OMP does not mutate another tool's config: for such sources the command maintains the user-level denylist instead and removes a conflicting stale override.
+
+### Session-scoped enable (`/mcp enable` and the `mcp` tool)
+
+`/mcp enable <name>` — and the model-callable `mcp` tool with `action: "enable"` — connects a server for the **current session only** and writes no config file. It starts a server whose entry says `enabled: false`, a server defined only in a third-party config, and a server the user `disabledServers` list hides. The name joins the manager's session enable set (`MCPManager.getSessionEnabledServers`), which discovery always applies, so the connection survives `/mcp reload` and any other rediscovery; a fresh session starts with an empty set, so the server is off again next launch.
+
+`/mcp disable <name>` remains persistent: it writes `enabled: false` (or a `disabledServers` entry) and additionally clears any session enable for that name.
+
+To make an enable permanent, edit the server's `enabled` flag (or the `enabledServers` allowlist) in the config file.
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "sprites": {
+      "type": "http",
+      "url": "https://sprites.dev/mcp",
+      "enabled": false
+    }
+  }
+}
+```
+
+With `sprites` disabled like this, `/mcp enable sprites` (or the `mcp` tool) connects it for the session without changing the file.
 
 ## `/mcp add` vs editing JSON directly
 
@@ -535,7 +558,7 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 
 ### The server exists in another tool's config but not in OMP
 
-Run `/mcp list`. OMP discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name.
+Run `/mcp list`. OMP discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name. To start a suppressed or `enabled: false` server for the current session without editing any file, run `/mcp enable <name>` (or call the `mcp` tool with `action: "enable"`).
 
 ### A browser MCP server is configured but never loads
 

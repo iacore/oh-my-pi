@@ -130,6 +130,30 @@ describe("MCP scope filtering precedes connection-equivalence deduplication", ()
 		}
 	});
 
+	test("forceEnable revives a config-disabled server for the session", async () => {
+		await writeMcpJson(path.join(projectDir, ".omp"), { sprites: { ...CONNECTION, enabled: false } });
+		clearFsCache();
+		const base = await loadAllMCPConfigs(projectDir, { filterExa: false });
+		expect(base.configs.sprites).toBeUndefined();
+
+		const forced = await loadAllMCPConfigs(projectDir, { filterExa: false, forceEnable: new Set(["sprites"]) });
+		expect(forced.configs.sprites).toMatchObject({ type: "http", url: CONNECTION.url, enabled: true });
+	});
+
+	test("forceEnable revives a server hidden by the user disabledServers denylist", async () => {
+		await writeMcpJson(path.join(projectDir, ".omp"), { sprites: CONNECTION });
+		await fs.writeFile(
+			path.join(userAgentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: {}, disabledServers: ["sprites"] }),
+		);
+		clearFsCache();
+		const base = await loadAllMCPConfigs(projectDir, { filterExa: false });
+		expect(base.configs.sprites).toBeUndefined();
+
+		const forced = await loadAllMCPConfigs(projectDir, { filterExa: false, forceEnable: new Set(["sprites"]) });
+		expect(forced.configs.sprites).toMatchObject({ enabled: true });
+	});
+
 	test("effective extension roots survive scopeless MCP rediscovery", async () => {
 		const extensionDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-extension-"));
 		try {

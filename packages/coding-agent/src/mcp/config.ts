@@ -22,6 +22,13 @@ export interface LoadMCPConfigsOptions {
 	filterBrowser?: boolean;
 	/** Session-local extension roots for post-startup rediscovery (explicit + mode + configured). */
 	extensionRoots?: EffectiveExtensionRoots;
+	/**
+	 * Names to load and connect even when their config entry is
+	 * `enabled: false` or the user `disabledServers` list hides them. This is
+	 * the session-scoped override behind `/mcp enable`: callers pass it and
+	 * nothing persists it. A force-enabled name resolves with `enabled: true`.
+	 */
+	forceEnable?: ReadonlySet<string>;
 }
 
 /** Result of loading MCP configs */
@@ -104,6 +111,7 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	const enableProjectConfig = options?.enableProjectConfig ?? true;
 	const filterExa = options?.filterExa ?? true;
 	const filterBrowser = options?.filterBrowser ?? false;
+	const forceEnable = options?.forceEnable;
 
 	// Load user-level disable/force-enable lists. The denylist always wins; the
 	// allowlist overrides a non-writable source config's `enabled: false`.
@@ -138,9 +146,12 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	// lower-priority user `foo` disabled), but never equivalence-shadow a
 	// differently-named enabled server — otherwise the disabled alias would be
 	// removed downstream and starve the surviving connection.
+	// A session `forceEnable` name bypasses both suppression reasons so
+	// `/mcp enable` can start a server the config disables or denylists.
 	const suppressServer = (server: MCPServer & { _source: SourceMeta }): boolean => {
-		if (disabledServers.has(server.name)) return true;
-		if (server.enabled === false && !forcedEnabled.has(server.name)) return true;
+		const forced = forceEnable?.has(server.name) ?? false;
+		if (!forced && disabledServers.has(server.name)) return true;
+		if (!forced && server.enabled === false && !forcedEnabled.has(server.name)) return true;
 		return false;
 	};
 
@@ -157,6 +168,15 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	for (const server of result.items) {
 		configs[server.name] = convertToLegacyConfig(server);
 		sources[server.name] = server._source;
+	}
+
+	// A force-enabled name reports as enabled so downstream consumers treat it
+	// like any config-enabled server rather than re-reading the disabled flag.
+	if (forceEnable) {
+		for (const name of forceEnable) {
+			const config = configs[name];
+			if (config) configs[name] = { ...config, enabled: true };
+		}
 	}
 
 	let exaApiKeys: string[] = [];

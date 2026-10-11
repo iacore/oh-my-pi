@@ -15,7 +15,6 @@ import {
 	analyzeAuthError,
 	discoverOAuthEndpoints,
 	fetchResourceMetadataScopes,
-	loadAllMCPConfigs,
 	MCPManager,
 	type OAuthEndpoints,
 } from "../../mcp";
@@ -511,7 +510,7 @@ export class MCPCommandController {
 			"  /mcp test <name>      Test connection to an MCP server",
 			"  /mcp reauth <name>    Reauthorize OAuth for an MCP server",
 			"  /mcp unauth <name>    Remove OAuth auth from an MCP server",
-			"  /mcp enable <name>    Enable an MCP server",
+			"  /mcp enable <name>    Connect an MCP server for this session only (no config write)",
 			"  /mcp disable <name>   Disable an MCP server",
 			"  /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
 			"                        Search Smithery registry and deploy from picker",
@@ -1486,7 +1485,7 @@ export class MCPCommandController {
 				const allServerNames = await collectMcpServerNames(this.ctx, { userConfig, projectConfig });
 				for (const name of allServerNames) {
 					if (configServerNames.has(name)) continue;
-					if (disabledServerNames.has(name)) continue;
+					if (disabledServerNames.has(name) && !this.#isSessionEnabled(name)) continue;
 					const source = this.ctx.mcpManager.getSource(name);
 					if (source) {
 						discoveredServers.push({ name, source });
@@ -1520,7 +1519,7 @@ export class MCPCommandController {
 					const config = userConfig.mcpServers![name];
 					const type = config.type ?? "stdio";
 					const state =
-						config.enabled === false
+						config.enabled === false && !this.#isSessionEnabled(name)
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
 					const status =
@@ -1543,7 +1542,7 @@ export class MCPCommandController {
 					const config = projectConfig.mcpServers![name];
 					const type = config.type ?? "stdio";
 					const state =
-						config.enabled === false
+						config.enabled === false && !this.#isSessionEnabled(name)
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
 					const status =
@@ -1578,7 +1577,9 @@ export class MCPCommandController {
 			}
 
 			// Show servers disabled via /mcp disable (from third-party configs)
-			const relevantDisabled = [...disabledServerNames].filter(n => !configServerNames.has(n));
+			const relevantDisabled = [...disabledServerNames].filter(
+				n => !configServerNames.has(n) && !this.#isSessionEnabled(n),
+			);
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
 				for (const name of relevantDisabled) {
@@ -1830,98 +1831,118 @@ export class MCPCommandController {
 		}
 
 		try {
-			const found = await this.#findConfiguredServer(name);
-			if (!found) {
-				// Check if this is a discovered server from a third-party config
-				const userConfigPath = getMCPConfigPath("user", getProjectDir());
-				const disabledServers = new Set(await readDisabledServers(userConfigPath));
-				const isDiscovered = this.ctx.mcpManager?.getSource(name);
-				const isCurrentlyDisabled = disabledServers.has(name);
-				if (!isDiscovered && !isCurrentlyDisabled) {
-					this.ctx.showError(`Server "${name}" not found.`);
-					return;
-				}
-				if (isCurrentlyDisabled === !enabled) {
-					this.#showMessage(
-						["", theme.fg("muted", `Server "${name}" is already ${enabled ? "enabled" : "disabled"}.`), ""].join(
-							"\n",
-						),
-					);
-					return;
-				}
-				await setServerDisabled(userConfigPath, name, !enabled);
-				if (enabled) {
-					await this.#connectEnabledMCPServer(name);
-					const state = await this.#waitForServerConnectionWithAnimation(name);
-					const status =
-						state === "connected"
-							? theme.fg("success", "Connected")
-							: state === "connecting"
-								? theme.fg("muted", "Connecting")
-								: theme.fg("warning", "Not connected yet");
-					this.#showMessage(
-						[
-							"",
-							theme.fg("success", `${theme.status.enabled} Enabled "${name}"`),
-							"",
-							`  Status: ${status}`,
-							"",
-						].join("\n"),
-					);
-				} else {
-					await this.ctx.mcpManager?.disconnectServer(name);
-					await this.ctx.session.refreshMCPTools(this.ctx.mcpManager?.getTools() ?? []);
-					this.#showMessage(["", theme.fg("muted", `${theme.status.disabled} Disabled "${name}"`), ""].join("\n"));
-				}
-				return;
-			}
-
-			if ((found.config.enabled ?? true) === enabled) {
-				this.#showMessage(
-					["", theme.fg("muted", `Server "${name}" is already ${enabled ? "enabled" : "disabled"}.`), ""].join(
-						"\n",
-					),
-				);
-				return;
-			}
-
-			const updated: MCPServerConfig = { ...found.config, enabled };
-			await updateMCPServer(found.filePath, name, updated);
 			if (enabled) {
-				await this.#connectEnabledMCPServer(name);
+				await this.#enableServer(name);
 			} else {
-				await this.ctx.mcpManager?.disconnectServer(name);
-				await this.ctx.session.refreshMCPTools(this.ctx.mcpManager?.getTools() ?? []);
+				await this.#disableServer(name);
 			}
-
-			let status = "";
-			if (enabled) {
-				const state = await this.#waitForServerConnectionWithAnimation(name);
-				status =
-					state === "connected"
-						? theme.fg("success", "Connected")
-						: state === "connecting"
-							? theme.fg("muted", "Connecting")
-							: theme.fg("warning", "Not connected yet");
-			}
-
-			const lines = [
-				"",
-				enabled
-					? theme.fg("success", `${theme.status.enabled} Enabled "${name}" (${found.scope} config)`)
-					: theme.fg("muted", `${theme.status.disabled} Disabled "${name}" (${found.scope} config)`),
-			];
-			if (status) {
-				lines.push("");
-				lines.push(`  Status: ${status}`);
-			}
-			lines.push("");
-			this.#showMessage(lines.join("\n"));
 		} catch (error) {
 			this.ctx.showError(
 				`Failed to ${enabled ? "enable" : "disable"} server: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
+	}
+
+	/**
+	 * Connect a server for this session only, writing no config file. Delegates to
+	 * {@link MCPManager.enableServerForSession}, which remembers the name so
+	 * `/mcp reload` reconnects it. Works for a config-disabled
+	 * (`enabled: false`) or `disabledServers`-denylisted server; an unknown name
+	 * is rejected.
+	 */
+	async #enableServer(name: string): Promise<void> {
+		const manager = this.ctx.mcpManager;
+		if (!manager) {
+			this.ctx.showError("No MCP manager available.");
+			return;
+		}
+
+		const result = await manager.enableServerForSession(name);
+		if (!result) {
+			this.ctx.showError(`Server "${name}" not found.`);
+			return;
+		}
+		await this.ctx.session.refreshMCPTools(manager.getTools());
+		this.#showMCPConnectionErrors(result.errors);
+
+		const state = await this.#waitForServerConnectionWithAnimation(name);
+		const status =
+			state === "connected"
+				? theme.fg("success", "Connected")
+				: state === "connecting"
+					? theme.fg("muted", "Connecting")
+					: theme.fg("warning", "Not connected yet");
+		this.#showMessage(
+			[
+				"",
+				theme.fg("success", `${theme.status.enabled} Enabled "${name}" (session only)`),
+				"",
+				`  Status: ${status}`,
+				"",
+			].join("\n"),
+		);
+	}
+
+	/**
+	 * Disable a server, persisting `enabled: false` / a `disabledServers` entry
+	 * as before. A name enabled only for this session clears that override, so a
+	 * config-disabled server still disconnects.
+	 */
+	async #disableServer(name: string): Promise<void> {
+		const wasSessionEnabled = this.#isSessionEnabled(name);
+
+		const found = await this.#findConfiguredServer(name);
+		if (!found) {
+			// Check if this is a discovered server from a third-party config
+			const userConfigPath = getMCPConfigPath("user", getProjectDir());
+			const disabledServers = new Set(await readDisabledServers(userConfigPath));
+			const isDiscovered = this.ctx.mcpManager?.getSource(name);
+			const isCurrentlyDisabled = disabledServers.has(name);
+			if (!isDiscovered && !isCurrentlyDisabled) {
+				this.ctx.showError(`Server "${name}" not found.`);
+				return;
+			}
+			if (isCurrentlyDisabled) {
+				await this.#resolveAlreadyDisabled(name, wasSessionEnabled);
+				return;
+			}
+			await setServerDisabled(userConfigPath, name, true);
+			await this.#disconnectServer(name);
+			this.#showMessage(["", theme.fg("muted", `${theme.status.disabled} Disabled "${name}"`), ""].join("\n"));
+			return;
+		}
+
+		if ((found.config.enabled ?? true) === false) {
+			await this.#resolveAlreadyDisabled(name, wasSessionEnabled);
+			return;
+		}
+
+		await updateMCPServer(found.filePath, name, { ...found.config, enabled: false });
+		await this.#disconnectServer(name);
+		this.#showMessage(
+			["", theme.fg("muted", `${theme.status.disabled} Disabled "${name}" (${found.scope} config)`), ""].join("\n"),
+		);
+	}
+
+	/** A config-disabled server only needs undoing when a session enable turned it on. */
+	async #resolveAlreadyDisabled(name: string, wasSessionEnabled: boolean): Promise<void> {
+		if (!wasSessionEnabled) {
+			this.#showMessage(["", theme.fg("muted", `Server "${name}" is already disabled.`), ""].join("\n"));
+			return;
+		}
+		await this.#disconnectServer(name);
+		this.#showMessage(["", theme.fg("muted", `${theme.status.disabled} Disabled "${name}"`), ""].join("\n"));
+	}
+
+	async #disconnectServer(name: string): Promise<void> {
+		const manager = this.ctx.mcpManager;
+		if (manager) await manager.disableServerForSession(name);
+		await this.ctx.session.refreshMCPTools(manager?.getTools() ?? []);
+	}
+
+	/** Whether `/mcp enable` turned `name` on for this session only. */
+	#isSessionEnabled(name: string): boolean {
+		return this.ctx.mcpManager?.getSessionEnabledServers().has(name) ?? false;
 	}
 
 	async #handleUnauth(name: string | undefined): Promise<void> {
@@ -2201,26 +2222,6 @@ export class MCPCommandController {
 				`Failed to reconnect to "${name}": ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-	}
-
-	async #connectEnabledMCPServer(name: string): Promise<void> {
-		if (!this.ctx.mcpManager) {
-			return;
-		}
-
-		const { configs, sources } = await loadAllMCPConfigs(getProjectDir(), {
-			extensionRoots: this.ctx.session.effectiveExtensionRoots,
-		});
-		const config = configs[name];
-		if (!config) {
-			await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
-			return;
-		}
-
-		const source = sources[name];
-		const result = await this.ctx.mcpManager.connectServers({ [name]: config }, source ? { [name]: source } : {});
-		await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
-		this.#showMCPConnectionErrors(result.errors);
 	}
 
 	#showMCPConnectionErrors(errors: Map<string, string>): void {

@@ -42,6 +42,7 @@ Filtering behavior:
 
 - `enableProjectConfig: false` removes project-level entries (`_source.level === "project"`).
 - `enabled: false` entries are suppressed unless the active-profile user `enabledServers` allowlist names them; the user `disabledServers` denylist always suppresses a same-named entry.
+- `forceEnable` (a session-scoped `ReadonlySet<string>` from `MCPManager.getSessionEnabledServers()`) bypasses both suppression reasons for the names it holds and reports them with `enabled: true`, so `/mcp enable` and the `mcp` tool can start a disabled or denylisted server without a config write.
 - Exa servers are filtered out by default and API keys are extracted for native Exa tool integration, unless the config explicitly requests Exa tools the native integration does not provide (`web_fetch_exa`, `web_search_advanced_exa`); browser automation MCP servers are filtered when `filterBrowser` is true.
 
 Result includes both `configs` and `sources` (metadata used later for provider labeling).
@@ -68,6 +69,7 @@ So startup does not fail the whole agent session when individual MCP servers fai
 - `#startupUpdates`, `#startupServers`, and `#startupFailures` — track tool registration/callback completion for startup readiness barriers.
 - `#lostRemoteServers` — scheduled recovery state for previously connected HTTP/SSE servers that remain unavailable.
 - `#serverConfigs: Map<string, MCPServerConfig>` — original unresolved configs preserved so reconnect can re-resolve credentials without leaking resolved tokens.
+- `#sessionForceEnable: Set<string>` — names connected for this session only (`/mcp enable`, the `mcp` tool). Passed to every `loadAllMCPConfigs` call as `forceEnable`, so a session-enabled server that config disables or denylists is rediscovered and reconnected; never persisted.
 - `#reconnectHistory: Map<string, number[]>` plus `#epoch` — per-server crash-window accounting and invalidation of reconnect attempts that outlive a global disconnect.
 - listener/callback state, including a bounded pending-notification FIFO and tracked resource subscriptions/refreshes.
 

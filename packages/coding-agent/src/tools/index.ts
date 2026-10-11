@@ -62,6 +62,7 @@ import { isIrcEnabled } from "../irc/messaging";
 import { FindTool, isFindEnabled } from "./jfind";
 import { LearnTool } from "./learn";
 import { ManageSkillTool } from "./manage-skill";
+import { McpTool } from "./mcp";
 import { MemoryEditTool } from "./memory-edit";
 import { MemoryRecallTool } from "./memory-recall";
 import { MemoryReflectTool } from "./memory-reflect";
@@ -139,6 +140,7 @@ export type { AgentActivitySnapshot, CoordinationDetails, JobSnapshot } from "@o
 export * from "./image-gen";
 export * from "./learn";
 export * from "./manage-skill";
+export * from "./mcp";
 export * from "./memory-edit";
 export * from "./memory-recall";
 export * from "./memory-reflect";
@@ -591,6 +593,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	reflect: MemoryReflectTool.createIf,
 	learn: LearnTool.createIf,
 	manage_skill: ManageSkillTool.createIf,
+	mcp: s => new McpTool(s),
 };
 
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
@@ -798,6 +801,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "task") {
 			return canSpawnAtDepth(cfgTaskMaxRecursionDepth.get(session.settings), session.taskDepth ?? 0);
 		}
+		if (name === "mcp") return session.enableMCP !== false;
 		return true;
 	};
 	if (includeYield && requestedTools && !requestedTools.includes("yield")) {

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bu
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { SourceMeta } from "@oh-my-pi/pi-coding-agent/capability/types";
+import { readMCPConfigFile } from "@oh-my-pi/pi-coding-agent/mcp/config-writer";
 import type { MCPServerConfig } from "@oh-my-pi/pi-coding-agent/mcp/types";
 import { MCPCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
@@ -14,7 +14,11 @@ import {
 	setAgentDir,
 	setProjectDir,
 } from "@oh-my-pi/pi-utils";
-import { createInteractiveModeContext, createMcpManagerStub } from "./helpers/interactive-mode-context";
+import {
+	createInteractiveModeContext,
+	createMcpManagerStub,
+	type McpManagerOverrides,
+} from "./helpers/interactive-mode-context";
 
 const originalProjectDir = getProjectDir();
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -32,24 +36,16 @@ function restoreAgentDir(): void {
 	delete Bun.env.PI_CODING_AGENT_DIR;
 }
 
-function createController() {
+function createController(overrides: McpManagerOverrides = {}) {
 	const refreshMCPTools = vi.fn(async () => {});
-	const connectServers = vi.fn(
-		async (_configs: Record<string, MCPServerConfig>, _sources: Record<string, SourceMeta>) => ({
-			errors: new Map<string, string>(),
-			connectedServers: [],
-			tools: [],
-			exaApiKeys: [],
-		}),
-	);
-	const mcpManager = createMcpManagerStub({ connectServers });
+	const mcpManager = createMcpManagerStub(overrides);
 	const ctx = createInteractiveModeContext({
 		session: { refreshMCPTools },
 		mcpManager,
 	});
 	const controller = new MCPCommandController(ctx);
 
-	return { controller, mcpManager, refreshMCPTools, connectServers };
+	return { controller, ctx, mcpManager, refreshMCPTools };
 }
 
 async function writeProjectConfig(projectDir: string, servers: Record<string, MCPServerConfig>): Promise<void> {
@@ -63,6 +59,12 @@ async function writeProjectConfig(projectDir: string, servers: Record<string, MC
 			2,
 		)}\n`,
 	);
+}
+
+function readProjectConfig(projectDir: string): Promise<{ mcpServers?: Record<string, MCPServerConfig> }> {
+	return readMCPConfigFile(getMCPConfigPath("project", projectDir)) as Promise<{
+		mcpServers?: Record<string, MCPServerConfig>;
+	}>;
 }
 
 describe("/mcp enable and disable", () => {
@@ -88,7 +90,35 @@ describe("/mcp enable and disable", () => {
 		await removeWithRetries(agentDir);
 	});
 
-	test("disabling one configured server does not reload other MCP servers", async () => {
+	test("enable connects a config-disabled server for this session only, leaving the file untouched", async () => {
+		await writeProjectConfig(projectDir, {
+			mcp1: { type: "stdio", command: "mcp-one", enabled: false },
+		});
+		const { controller, mcpManager } = createController();
+
+		await controller.handle("/mcp enable mcp1");
+
+		expect(mcpManager.enableServerForSession).toHaveBeenCalledWith("mcp1");
+		expect(mcpManager.discoverAndConnect).not.toHaveBeenCalled();
+		// The session override must not be persisted: the file still disables it.
+		expect((await readProjectConfig(projectDir)).mcpServers?.mcp1).toEqual({
+			type: "stdio",
+			command: "mcp-one",
+			enabled: false,
+		});
+	});
+
+	test("enable reports a server no source defines as not found", async () => {
+		const enableServerForSession = vi.fn(async (_name: string) => undefined);
+		const { controller, ctx } = createController({ enableServerForSession });
+
+		await controller.handle("/mcp enable nope");
+
+		expect(enableServerForSession).toHaveBeenCalledWith("nope");
+		expect(ctx.showError).toHaveBeenCalledWith('Server "nope" not found.');
+	});
+
+	test("disable persists enabled: false and disconnects only that server", async () => {
 		await writeProjectConfig(projectDir, {
 			mcp1: { type: "stdio", command: "mcp-one" },
 			mcp2: { type: "stdio", command: "mcp-two" },
@@ -97,27 +127,33 @@ describe("/mcp enable and disable", () => {
 
 		await controller.handle("/mcp disable mcp1");
 
-		expect(mcpManager.disconnectServer).toHaveBeenCalledWith("mcp1");
+		expect(mcpManager.disableServerForSession).toHaveBeenCalledWith("mcp1");
 		expect(refreshMCPTools).toHaveBeenCalledWith([]);
 		expect(mcpManager.disconnectAll).not.toHaveBeenCalled();
 		expect(mcpManager.discoverAndConnect).not.toHaveBeenCalled();
-		expect(mcpManager.connectServers).not.toHaveBeenCalled();
+		expect(mcpManager.enableServerForSession).not.toHaveBeenCalled();
+		const servers = (await readProjectConfig(projectDir)).mcpServers;
+		expect(servers?.mcp1).toEqual({ type: "stdio", command: "mcp-one", enabled: false });
+		expect(servers?.mcp2).toEqual({ type: "stdio", command: "mcp-two" });
 	});
 
-	test("enabling one configured server connects only that MCP server", async () => {
+	test("disable undoes a session-only enable of a config-disabled server", async () => {
 		await writeProjectConfig(projectDir, {
 			mcp1: { type: "stdio", command: "mcp-one", enabled: false },
-			mcp2: { type: "stdio", command: "mcp-two" },
 		});
-		const { controller, mcpManager, connectServers } = createController();
+		const { controller, mcpManager } = createController({
+			getSessionEnabledServers: vi.fn(() => new Set(["mcp1"])),
+		});
 
-		await controller.handle("/mcp enable mcp1");
+		await controller.handle("/mcp disable mcp1");
 
-		expect(mcpManager.disconnectAll).not.toHaveBeenCalled();
-		expect(mcpManager.discoverAndConnect).not.toHaveBeenCalled();
-		expect(connectServers).toHaveBeenCalledTimes(1);
-		const [configs] = connectServers.mock.calls[0]!;
-		expect(Object.keys(configs)).toEqual(["mcp1"]);
-		expect(configs.mcp1).toEqual({ type: "stdio", command: "mcp-one", enabled: true });
+		// It was connected only through the session override, so it disconnects
+		// rather than reporting "already disabled".
+		expect(mcpManager.disableServerForSession).toHaveBeenCalledWith("mcp1");
+		expect((await readProjectConfig(projectDir)).mcpServers?.mcp1).toEqual({
+			type: "stdio",
+			command: "mcp-one",
+			enabled: false,
+		});
 	});
 });

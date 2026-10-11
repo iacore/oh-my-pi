@@ -286,6 +286,13 @@ export class MCPManager {
 	/** Preserved configs for reconnection after connection loss. */
 	#serverConfigs = new Map<string, MCPServerConfig>();
 	#discoverOptions: MCPDiscoverOptions | undefined;
+	/**
+	 * Names connected for this session only through the enable override
+	 * (`/mcp enable`, the `mcp` tool). Discovery always applies the set, so a
+	 * session-enabled server survives rediscovery; nothing persists it, so a
+	 * fresh session starts empty.
+	 */
+	#sessionForceEnable = new Set<string>();
 	#browserFilterMutationTail: Promise<void> = Promise.resolve();
 	/** Settles when the latest {@link MCPManager.discoverAndConnect} call does; reconciles wait on it. */
 	#discoveryInFlight: Promise<unknown> = Promise.resolve();
@@ -532,6 +539,47 @@ export class MCPManager {
 		return discovery;
 	}
 
+	/** Servers connected for this session by the enable override. */
+	getSessionEnabledServers(): ReadonlySet<string> {
+		return this.#sessionForceEnable;
+	}
+
+	/**
+	 * Connect `name` for the current session even when its config disables it or
+	 * the user `disabledServers` list hides it. Nothing is written to disk, and
+	 * the name is remembered so {@link MCPManager.discoverAndConnect} reconnects
+	 * it. Returns `undefined` when no source defines the server.
+	 */
+	async enableServerForSession(name: string): Promise<MCPLoadResult | undefined> {
+		this.#sessionForceEnable.add(name);
+		const options = this.#discoverOptions;
+		const loaded = await this.loadConfigs(this.cwd, {
+			enableProjectConfig: options?.enableProjectConfig,
+			filterExa: options?.filterExa,
+			filterBrowser: options?.filterBrowser,
+			extensionRoots: options?.extensionRoots,
+			forceEnable: this.#sessionForceEnable,
+		});
+		const config = loaded.configs[name];
+		if (!config) {
+			this.#sessionForceEnable.delete(name);
+			return undefined;
+		}
+		const source = loaded.sources[name];
+		return this.connectServers(
+			{ [name]: config },
+			source ? { [name]: source } : {},
+			options?.onStatus,
+			options?.startupTimeoutMs,
+		);
+	}
+
+	/** Drop `name` from the session enable override and disconnect it. */
+	async disableServerForSession(name: string): Promise<void> {
+		this.#sessionForceEnable.delete(name);
+		await this.disconnectServer(name);
+	}
+
 	async #discoverAndConnect(options?: MCPDiscoverOptions): Promise<MCPLoadResult> {
 		this.#discoverOptions = options ? { ...options } : undefined;
 		let loadedConfigs: LoadMCPConfigsResult;
@@ -541,6 +589,7 @@ export class MCPManager {
 				filterExa: options?.filterExa,
 				filterBrowser: options?.filterBrowser,
 				extensionRoots: options?.extensionRoots,
+				forceEnable: this.#sessionForceEnable,
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -588,6 +637,7 @@ export class MCPManager {
 			filterExa: options.filterExa,
 			filterBrowser: options.filterBrowser,
 			extensionRoots: options.extensionRoots,
+			forceEnable: this.#sessionForceEnable,
 		});
 		// Every server whose resolution depends on the flag: project-level ones
 		// known now, plus project-level ones the enabled load resolves.
@@ -622,6 +672,7 @@ export class MCPManager {
 			filterExa: options?.filterExa,
 			filterBrowser: false,
 			extensionRoots: options?.extensionRoots,
+			forceEnable: this.#sessionForceEnable,
 		});
 		const browserConfigs: Record<string, MCPServerConfig> = {};
 		const browserSources: Record<string, SourceMeta> = {};
