@@ -118,7 +118,7 @@ describe("/mcp enable and disable", () => {
 		expect(ctx.showError).toHaveBeenCalledWith('Server "nope" not found.');
 	});
 
-	test("disable persists enabled: false and disconnects only that server", async () => {
+	test("disable disconnects for this session only, leaving the file untouched", async () => {
 		await writeProjectConfig(projectDir, {
 			mcp1: { type: "stdio", command: "mcp-one" },
 			mcp2: { type: "stdio", command: "mcp-two" },
@@ -133,8 +133,17 @@ describe("/mcp enable and disable", () => {
 		expect(mcpManager.discoverAndConnect).not.toHaveBeenCalled();
 		expect(mcpManager.enableServerForSession).not.toHaveBeenCalled();
 		const servers = (await readProjectConfig(projectDir)).mcpServers;
-		expect(servers?.mcp1).toEqual({ type: "stdio", command: "mcp-one", enabled: false });
+		expect(servers?.mcp1).toEqual({ type: "stdio", command: "mcp-one" });
 		expect(servers?.mcp2).toEqual({ type: "stdio", command: "mcp-two" });
+	});
+
+	test("disable reports a server no source defines as not found", async () => {
+		const { controller, ctx, mcpManager } = createController();
+
+		await controller.handle("/mcp disable nope");
+
+		expect(ctx.showError).toHaveBeenCalledWith('Server "nope" not found.');
+		expect(mcpManager.disableServerForSession).not.toHaveBeenCalled();
 	});
 
 	test("disable undoes a session-only enable of a config-disabled server", async () => {

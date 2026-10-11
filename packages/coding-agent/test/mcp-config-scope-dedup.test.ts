@@ -154,6 +154,16 @@ describe("MCP scope filtering precedes connection-equivalence deduplication", ()
 		expect(forced.configs.sprites).toMatchObject({ enabled: true });
 	});
 
+	test("forceDisable suppresses a config-enabled server", async () => {
+		await writeMcpJson(path.join(projectDir, ".omp"), { sprites: CONNECTION });
+		clearFsCache();
+		const base = await loadAllMCPConfigs(projectDir, { filterExa: false });
+		expect(base.configs.sprites).toBeDefined();
+
+		const suppressed = await loadAllMCPConfigs(projectDir, { filterExa: false, forceDisable: new Set(["sprites"]) });
+		expect(suppressed.configs.sprites).toBeUndefined();
+	});
+
 	test("effective extension roots survive scopeless MCP rediscovery", async () => {
 		const extensionDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-extension-"));
 		try {

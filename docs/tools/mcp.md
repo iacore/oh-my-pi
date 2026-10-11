@@ -27,10 +27,10 @@ Connects `server` for the **current session only** and writes no config file. It
 Returns `Server "<name>" not found.` when no source defines the server, and rolls the name back out of the override set.
 
 ### `disable`
-Drops `server` from the session enable set and disconnects it. It does not touch any config file; `/mcp disable` (the command) keeps its persistent behaviour.
+Drops `server` from the session enable set, adds it to the session disable set, and disconnects it, for the **current session only**. It writes no config file and works for a server the config enables; a later `/mcp reload` keeps it suppressed. Enabling the server again clears the session disable.
 
 ### `list`
-Reports every configured server (config-file entries plus manager-known names, including user-denylisted ones) with `connected` state, a `session only` marker for enable-override servers, and a `disabled in config` marker for entries with `enabled: false`.
+Reports every configured server (config-file entries plus manager-known names, including user-denylisted ones) with `connected` state, a `(session only)` marker for enable-override servers, a `(disabled for this session)` marker for disable-override servers, and a `(disabled in config)` marker for entries with `enabled: false`.
 
 ## Notes
 - The tool is top-level (`loadMode: "essential"`) rather than an `xd://` device, so a model without `xd://` awareness can still call it.

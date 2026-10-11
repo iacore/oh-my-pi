@@ -154,6 +154,7 @@ export function createMcpManagerStub(overrides?: McpManagerOverrides): MCPManage
 		disconnectAll: vi.fn(async () => {}),
 		disconnectServer: vi.fn(async () => {}),
 		getSessionEnabledServers: vi.fn(() => new Set<string>()),
+		getSessionDisabledServers: vi.fn(() => new Set<string>()),
 		enableServerForSession: vi.fn(async (name: string) => ({
 			...emptyLoad(),
 			connectedServers: [name],

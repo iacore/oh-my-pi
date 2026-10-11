@@ -69,7 +69,7 @@ Add this line at the top of the file for editor autocomplete and validation:
 }
 ```
 
-OMP now writes this automatically when `/mcp add`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update an OMP-managed MCP file.
+OMP now writes this automatically when `/mcp add`, `/mcp reauth`, or other config-writing flows create or update an OMP-managed MCP file.
 
 ## File shape
 
@@ -456,15 +456,18 @@ The active profile's user file supplies two cross-source overrides:
 }
 ```
 
-`/mcp disable` updates `enabled` to `false` directly when the definition is in an OMP-owned writable file. OMP does not mutate another tool's config: for such sources the command maintains the user-level denylist instead and removes a conflicting stale override.
+The active-profile user file supplies two cross-source persistence overrides: `disabledServers` and `enabledServers` (above). They are durable config; the `/mcp enable` and `/mcp disable` commands do **not** write them.
 
-### Session-scoped enable (`/mcp enable` and the `mcp` tool)
+### Session-scoped enable and disable (`/mcp enable|disable` and the `mcp` tool)
 
-`/mcp enable <name>` — and the model-callable `mcp` tool with `action: "enable"` — connects a server for the **current session only** and writes no config file. It starts a server whose entry says `enabled: false`, a server defined only in a third-party config, and a server the user `disabledServers` list hides. The name joins the manager's session enable set (`MCPManager.getSessionEnabledServers`), which discovery always applies, so the connection survives `/mcp reload` and any other rediscovery; a fresh session starts with an empty set, so the server is off again next launch.
+Neither command writes a config file. Each records an in-memory override on the manager for the **current session only**:
 
-`/mcp disable <name>` remains persistent: it writes `enabled: false` (or a `disabledServers` entry) and additionally clears any session enable for that name.
+- `/mcp enable <name>` (the `mcp` tool with `action: "enable"`) adds the name to `MCPManager.getSessionEnabledServers()`. It connects a server whose entry says `enabled: false`, a server defined only in a third-party config, and a server the user `disabledServers` list hides.
+- `/mcp disable <name>` (`action: "disable"`) adds the name to `MCPManager.getSessionDisabledServers()` and disconnects it, suppressing a server the config enables.
 
-To make an enable permanent, edit the server's `enabled` flag (or the `enabledServers` allowlist) in the config file.
+Discovery always applies both sets (`forceEnable` / `forceDisable` in `loadAllMCPConfigs`), so the state survives `/mcp reload` and any other rediscovery; a fresh session starts with both sets empty, so every server returns to its configured state. Enabling a server clears any session disable for that name, and vice versa. An unknown name is rejected.
+
+To change the state permanently, edit the server's `enabled` flag (or the `enabledServers` / `disabledServers` lists) in the config file.
 
 ```json
 {
@@ -558,7 +561,7 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 
 ### The server exists in another tool's config but not in OMP
 
-Run `/mcp list`. OMP discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name. To start a suppressed or `enabled: false` server for the current session without editing any file, run `/mcp enable <name>` (or call the `mcp` tool with `action: "enable"`).
+Run `/mcp list`. OMP discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name. To start a suppressed or `enabled: false` server for the current session without editing any file, run `/mcp enable <name>` (or call the `mcp` tool with `action: "enable"`); the reverse, `/mcp disable <name>`, stops an enabled server for the session without editing the file.
 
 ### A browser MCP server is configured but never loads
 

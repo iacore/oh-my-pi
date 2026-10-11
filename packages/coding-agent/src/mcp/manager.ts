@@ -293,6 +293,12 @@ export class MCPManager {
 	 * fresh session starts empty.
 	 */
 	#sessionForceEnable = new Set<string>();
+	/**
+	 * Names suppressed for this session only (`/mcp disable`, the `mcp` tool).
+	 * Discovery treats them as if their config said `enabled: false`; the set is
+	 * in memory, so the server returns on the next session.
+	 */
+	#sessionForceDisable = new Set<string>();
 	#browserFilterMutationTail: Promise<void> = Promise.resolve();
 	/** Settles when the latest {@link MCPManager.discoverAndConnect} call does; reconciles wait on it. */
 	#discoveryInFlight: Promise<unknown> = Promise.resolve();
@@ -544,6 +550,11 @@ export class MCPManager {
 		return this.#sessionForceEnable;
 	}
 
+	/** Servers suppressed for this session by the disable override. */
+	getSessionDisabledServers(): ReadonlySet<string> {
+		return this.#sessionForceDisable;
+	}
+
 	/**
 	 * Connect `name` for the current session even when its config disables it or
 	 * the user `disabledServers` list hides it. Nothing is written to disk, and
@@ -551,6 +562,7 @@ export class MCPManager {
 	 * it. Returns `undefined` when no source defines the server.
 	 */
 	async enableServerForSession(name: string): Promise<MCPLoadResult | undefined> {
+		this.#sessionForceDisable.delete(name);
 		this.#sessionForceEnable.add(name);
 		const options = this.#discoverOptions;
 		const loaded = await this.loadConfigs(this.cwd, {
@@ -559,6 +571,7 @@ export class MCPManager {
 			filterBrowser: options?.filterBrowser,
 			extensionRoots: options?.extensionRoots,
 			forceEnable: this.#sessionForceEnable,
+			forceDisable: this.#sessionForceDisable,
 		});
 		const config = loaded.configs[name];
 		if (!config) {
@@ -574,9 +587,14 @@ export class MCPManager {
 		);
 	}
 
-	/** Drop `name` from the session enable override and disconnect it. */
+	/**
+	 * Suppress `name` for the current session and disconnect it, writing no
+	 * config file. Discovery treats the name as config-disabled until the
+	 * session ends.
+	 */
 	async disableServerForSession(name: string): Promise<void> {
 		this.#sessionForceEnable.delete(name);
+		this.#sessionForceDisable.add(name);
 		await this.disconnectServer(name);
 	}
 
@@ -590,6 +608,7 @@ export class MCPManager {
 				filterBrowser: options?.filterBrowser,
 				extensionRoots: options?.extensionRoots,
 				forceEnable: this.#sessionForceEnable,
+				forceDisable: this.#sessionForceDisable,
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -638,6 +657,7 @@ export class MCPManager {
 			filterBrowser: options.filterBrowser,
 			extensionRoots: options.extensionRoots,
 			forceEnable: this.#sessionForceEnable,
+			forceDisable: this.#sessionForceDisable,
 		});
 		// Every server whose resolution depends on the flag: project-level ones
 		// known now, plus project-level ones the enabled load resolves.
@@ -673,6 +693,7 @@ export class MCPManager {
 			filterBrowser: false,
 			extensionRoots: options?.extensionRoots,
 			forceEnable: this.#sessionForceEnable,
+			forceDisable: this.#sessionForceDisable,
 		});
 		const browserConfigs: Record<string, MCPServerConfig> = {};
 		const browserSources: Record<string, SourceMeta> = {};

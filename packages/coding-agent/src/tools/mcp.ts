@@ -18,14 +18,19 @@ export interface McpToolDetails {
 	action: McpParams["action"];
 	server?: string;
 	connected?: boolean;
-	servers?: Array<{ name: string; connected: boolean; enabledInConfig: boolean; sessionOnly: boolean }>;
+	servers?: Array<{
+		name: string;
+		connected: boolean;
+		enabledInConfig: boolean;
+		sessionOnly: boolean;
+		sessionDisabled: boolean;
+	}>;
 }
 
 const DESCRIPTION = [
-	"Enable, disable, and list MCP (Model Context Protocol) servers for the current session.",
-	"`enable` connects a server whose config entry is `enabled: false` or whose name the user `disabledServers` list hides. It writes no config file: the server stays connected only for this session, surviving `/mcp reload`, and reverts on the next session.",
-	"`disable` disconnects a server for this session.",
-	"`list` reports each configured server, whether it is connected, and whether the connection is session-only.",
+	"Enable or disable MCP (Model Context Protocol) servers for the current session, or list them.",
+	"Neither action writes a config file. `enable` connects a server whose config entry is `enabled: false` or whose name the user `disabledServers` list hides; `disable` disconnects a server the config enables. Both last only for this session (surviving `/mcp reload`) and revert on the next session.",
+	"`list` reports each configured server, whether it is connected, and whether a session override is in effect.",
 ].join("\n");
 
 /** Model-callable counterpart of `/mcp enable|disable`: session-scoped, never persisted. */
@@ -54,8 +59,7 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 		}
 
 		if (params.action === "list") {
-			const sessionOnly = manager.getSessionEnabledServers();
-			const servers = await this.#configuredServers(manager, sessionOnly);
+			const servers = await this.#configuredServers(manager);
 			return {
 				content: [
 					{
@@ -67,11 +71,13 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 										.map(
 											s =>
 												`${s.name}: ${s.connected ? "connected" : "not connected"}${
-													s.sessionOnly
-														? " (session only)"
-														: s.enabledInConfig
-															? ""
-															: " (disabled in config)"
+													s.sessionDisabled
+														? " (disabled for this session)"
+														: s.sessionOnly
+															? " (session only)"
+															: s.enabledInConfig
+																? ""
+																: " (disabled in config)"
 												}`,
 										)
 										.join("\n"),
@@ -106,6 +112,10 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 			};
 		}
 
+		const configured = await this.#configuredServers(manager);
+		if (!configured.some(server => server.name === name)) {
+			throw new Error(`Server "${name}" not found.`);
+		}
 		await manager.disableServerForSession(name);
 		return {
 			content: [{ type: "text", text: `Disabled "${name}" for this session.` }],
@@ -117,10 +127,7 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 	 * Union of the config-file servers (which include entries the manager never
 	 * loaded because they are disabled) and the manager's own known names.
 	 */
-	async #configuredServers(
-		manager: MCPManager,
-		sessionOnly: ReadonlySet<string>,
-	): Promise<NonNullable<McpToolDetails["servers"]>> {
+	async #configuredServers(manager: MCPManager): Promise<NonNullable<McpToolDetails["servers"]>> {
 		const [userConfig, projectConfig] = await Promise.all([
 			readMCPConfigFile(getMCPConfigPath("user", this.session.cwd)),
 			readMCPConfigFile(getMCPConfigPath("project", this.session.cwd)),
@@ -135,6 +142,8 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 			if (config?.enabled !== false) enabledInConfig.add(name);
 		}
 		for (const name of userConfig.disabledServers ?? []) names.add(name);
+		const sessionOnly = manager.getSessionEnabledServers();
+		const sessionDisabled = manager.getSessionDisabledServers();
 		return [...names]
 			.sort((a, b) => a.localeCompare(b))
 			.map(name => ({
@@ -142,6 +151,7 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 				connected: manager.getConnectionStatus(name) === "connected",
 				enabledInConfig: enabledInConfig.has(name),
 				sessionOnly: sessionOnly.has(name),
+				sessionDisabled: sessionDisabled.has(name),
 			}));
 	}
 }

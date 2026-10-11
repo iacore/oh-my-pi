@@ -29,6 +29,12 @@ export interface LoadMCPConfigsOptions {
 	 * nothing persists it. A force-enabled name resolves with `enabled: true`.
 	 */
 	forceEnable?: ReadonlySet<string>;
+	/**
+	 * Names to suppress even when their config entry is enabled. The
+	 * session-scoped override behind `/mcp disable`; it beats `forceEnable` and
+	 * is never persisted.
+	 */
+	forceDisable?: ReadonlySet<string>;
 }
 
 /** Result of loading MCP configs */
@@ -112,6 +118,7 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	const filterExa = options?.filterExa ?? true;
 	const filterBrowser = options?.filterBrowser ?? false;
 	const forceEnable = options?.forceEnable;
+	const forceDisable = options?.forceDisable;
 
 	// Load user-level disable/force-enable lists. The denylist always wins; the
 	// allowlist overrides a non-writable source config's `enabled: false`.
@@ -147,8 +154,11 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	// differently-named enabled server — otherwise the disabled alias would be
 	// removed downstream and starve the surviving connection.
 	// A session `forceEnable` name bypasses both suppression reasons so
-	// `/mcp enable` can start a server the config disables or denylists.
+	// `/mcp enable` can start a server the config disables or denylists, and a
+	// session `forceDisable` name is suppressed first so `/mcp disable` can hide
+	// a server the config enables.
 	const suppressServer = (server: MCPServer & { _source: SourceMeta }): boolean => {
+		if (forceDisable?.has(server.name)) return true;
 		const forced = forceEnable?.has(server.name) ?? false;
 		if (!forced && disabledServers.has(server.name)) return true;
 		if (!forced && server.enabled === false && !forcedEnabled.has(server.name)) return true;
