@@ -1,12 +1,27 @@
 #!/bin/sh
 # Dev launcher for the omp CLI, installed by `bun run setup`.
 #
-# Problem it solves: Bun reads `bunfig.toml` from the *current working
-# directory* at startup and evaluates its `preload` entries before running the
-# script. A bun-shebang bin (what `bun link` creates for `src/cli.ts`)
-# therefore inherits whatever `preload` the directory you happen to be in
-# declares. Running `omp`/`pi` inside an unrelated Bun project can execute — and
-# crash on — that project's preload, e.g.
+# Two launch paths, chosen by OMP_LAUNCH_MODE (default `auto`):
+#
+#   auto      run the standalone binary at packages/coding-agent/dist/omp,
+#             rebuilding it only when the checkout's source generation moves
+#             (git HEAD / tracked-dirty set / Bun version / the embedded native
+#             addon). Falls back to the source path whenever the build is
+#             unavailable, already in progress, or has failed for that same
+#             generation — never blocking, never running a stale artifact.
+#   ts        always `bun src/cli.ts` (the pre-cache-tuned dev loop; also forced
+#             when PI_TIMING is set, since the module timer is a preload).
+#
+# The compiled binary embeds its own runtime and autoloads no bunfig/tsconfig/
+# .env, so it needs neither the empty-directory dance below nor the preload
+# shim; the source path still does.
+#
+# Why the empty directory matters for the source path: Bun reads `bunfig.toml`
+# from the *current working directory* at startup and evaluates its `preload`
+# entries before running the script. A bun-shebang bin (what `bun link` creates
+# for `src/cli.ts`) therefore inherits whatever `preload` the directory you
+# happen to be in declares. Running `omp`/`pi` inside an unrelated Bun project
+# can execute — and crash on — that project's preload, e.g.
 #   error: Cannot find module '@v12sh/utils/frontmatter' from '.../loader.ts'
 #
 # Bun only reads the *exact* cwd (it does not walk parents) and ignores
@@ -26,9 +41,16 @@ while [ -L "$self" ]; do
 	esac
 done
 scripts_dir=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P)
+pkg_dir=$(CDPATH= cd -- "$scripts_dir/.." && pwd -P)
+repo_root=$(CDPATH= cd -- "$pkg_dir/../.." && pwd -P)
 cli=$scripts_dir/../src/cli.ts
 preload=$scripts_dir/omp.ts
 timing_preload=$scripts_dir/../../utils/src/module-timer.ts
+
+artifact=$pkg_dir/dist/omp
+build_log=$pkg_dir/dist/omp-build.log
+lock_dir=$pkg_dir/dist/.omp-build.lock
+state=$pkg_dir/dist/omp-launch.state
 
 launch_dir=${OMP_DEV_LAUNCH_DIR:-${HOME}/.omp/.dev-cwd}
 mkdir -p "$launch_dir"
@@ -36,16 +58,83 @@ mkdir -p "$launch_dir"
 OMP_LAUNCH_CWD=$PWD
 export OMP_LAUNCH_CWD
 cd "$launch_dir"
+
 # Herdr 0.7.5 validates the foreground process name. The macOS shell can
 # preserve OMP's identity while still running the development CLI through Bun.
-run_bun() {
+run_identity() {
 	if [ "${HERDR_ENV:-}" = 1 ] && [ "$(uname -s)" = Darwin ]; then
-		exec -a omp bun "$@"
+		exec -a omp "$@"
 	fi
-	exec bun "$@"
+	exec "$@"
 }
 
-if [ -n "${PI_TIMING:-}" ]; then
-	run_bun --preload "$preload" --preload "$timing_preload" "$cli" "$@"
+launch_source() {
+	if [ -n "${PI_TIMING:-}" ]; then
+		run_identity bun --preload "$preload" --preload "$timing_preload" "$cli" "$@"
+	fi
+	run_identity bun --preload "$preload" "$cli" "$@"
+}
+
+# Newest mtime of the native addon the build embeds; BSD and GNU stat differ.
+addon_mtime() {
+	set -- "$repo_root"/packages/natives/native/pi_natives.*.node
+	[ -e "$1" ] || {
+		echo 0
+		return
+	}
+	stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+# Everything the build output depends on, in one cheap line. Any structural
+# change to the checkout (pull, merge, edit, add) moves at least one field.
+bun --version >/dev/null 2>&1 || launch_source "$@"
+generation() {
+	{
+		bun --version
+		git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo nogit
+		git -C "$repo_root" status --porcelain 2>/dev/null
+		addon_mtime
+	} | cksum
+}
+
+[ "${OMP_LAUNCH_MODE:-auto}" = ts ] && launch_source "$@"
+[ -n "${PI_TIMING:-}" ] && launch_source "$@"
+git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || launch_source "$@"
+
+mkdir -p "$pkg_dir/dist"
+generation=$(generation)
+recorded=$(cat "$state" 2>/dev/null || true)
+
+run_compiled() {
+	run_identity "$artifact" "$@"
+}
+
+# Fresh artifact for this generation: run it.
+if [ -x "$artifact" ] && [ "$recorded" = "$generation ok" ]; then
+	run_compiled "$@"
 fi
-run_bun --preload "$preload" "$cli" "$@"
+
+# Already tried and failed for this generation: do not pay the build again.
+[ "$recorded" = "$generation failed" ] && launch_source "$@"
+
+# One builder at a time; everyone else takes the source path instead of waiting.
+if ! mkdir "$lock_dir" 2>/dev/null; then
+	launch_source "$@"
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' 0 1 2 15
+
+echo "omp: building the compiled CLI (sources changed since the last build)..." >&2
+build_started=$(date +%s)
+if (cd "$pkg_dir" && bun run build) >"$build_log" 2>&1 && [ -x "$artifact" ] && [ "$(stat -c %Y "$artifact" 2>/dev/null || stat -f %m "$artifact")" -ge "$build_started" ]; then
+	echo "$generation ok" >"$state"
+	rmdir "$lock_dir" 2>/dev/null || true
+	trap - 0 1 2 15
+	run_compiled "$@"
+fi
+
+echo "$generation failed" >"$state"
+tail -n 15 "$build_log" >&2 || true
+echo "omp: build failed; running from source" >&2
+rmdir "$lock_dir" 2>/dev/null || true
+trap - 0 1 2 15
+launch_source "$@"
