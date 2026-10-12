@@ -2,11 +2,9 @@
  * Check for and install updates.
  */
 
-import { Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { CliUsageError, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import { updateHelp as commandHelp } from "../cli/command-help";
 import * as pluginCli from "../cli/plugin-cli";
-import * as updateCli from "../cli/update-cli";
-import { CliUsageError } from "../cli/usage-error";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 
 export default class Update extends Command {
@@ -32,12 +30,16 @@ export default class Update extends Command {
 		if (flags.canary && flags.stable) throw new CliUsageError("--canary and --stable are mutually exclusive");
 		if (flags.plugins) {
 			await pluginCli.runPluginCommand({ action: "upgrade", args: [], flags: {} });
-		} else {
-			await updateCli.runUpdateCommand({
-				force: flags.force,
-				check: flags.check,
-				channel: flags.canary ? "canary" : flags.stable ? "stable" : undefined,
-			});
+			return;
 		}
+		// Fork-local: this checkout is a source install whose `omp` entry is the
+		// dev launcher `scripts/omp` (linked by `scripts/link-omp.sh`), not a
+		// released artifact. Self-updating would overwrite that launcher with a
+		// release binary and detach the install from the source tree, so the
+		// command is disabled here; the checkout advances with `git pull` and
+		// `bun run setup`.
+		throw new CliUsageError(
+			"omp update is disabled in this source checkout; run `git pull` and `bun run setup` instead.",
+		);
 	}
 }

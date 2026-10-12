@@ -98,7 +98,7 @@ const TEST_CONFIG: CliConfig = {
 	commands: new Map(),
 };
 
-describe("update command plugin dispatch", () => {
+describe("update command dispatch", () => {
 	it("routes -l to plugin upgrade instead of the app updater", async () => {
 		const pluginSpy = spyOn(pluginCli, "runPluginCommand").mockResolvedValue(undefined);
 		const updateSpy = spyOn(updateCli, "runUpdateCommand").mockResolvedValue(undefined);
@@ -110,14 +110,14 @@ describe("update command plugin dispatch", () => {
 		expect(updateSpy).not.toHaveBeenCalled();
 	});
 
-	it("keeps normal update flags on the app updater path", async () => {
+	it("refuses the app updater on this source checkout", async () => {
 		const pluginSpy = spyOn(pluginCli, "runPluginCommand").mockResolvedValue(undefined);
 		const updateSpy = spyOn(updateCli, "runUpdateCommand").mockResolvedValue(undefined);
 
 		const command = new Update(["--check", "--force"], TEST_CONFIG);
-		await command.run();
+		await expect(command.run()).rejects.toThrow("omp update is disabled in this source checkout");
 
-		expect(updateSpy).toHaveBeenCalledWith({ force: true, check: true, channel: undefined });
+		expect(updateSpy).not.toHaveBeenCalled();
 		expect(pluginSpy).not.toHaveBeenCalled();
 	});
 });
