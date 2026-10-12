@@ -265,3 +265,34 @@ export const cfgBashAutoBackgroundThresholdMs = register({
 	type: "number",
 	default: 60_000,
 });
+
+/**
+ * Niceness applied to omp and every process it spawns, so heavy children — the
+ * `tsgo` language server, `cargo`'s rustc workers, bash commands — yield to
+ * interactive work instead of pinning every core and freezing the desktop.
+ * `0` leaves the default priority. Applied once at startup (see
+ * `exec/process-priority.ts`), so a change takes effect on the next launch.
+ */
+export const cfgProcessNice = register({
+	id: "process.nice",
+	type: "number",
+	default: 0,
+	normalize: value => {
+		const nice = Math.round(Number(value));
+		return Number.isFinite(nice) ? Math.min(19, Math.max(0, nice)) : 0;
+	},
+	ui: {
+		tab: "interaction",
+		group: "Power",
+		label: "Process Niceness",
+		description:
+			"Linux niceness applied to omp and every process it spawns, so builds and language servers yield to interactive work. Takes effect on the next launch",
+		options: [
+			{ value: "0", label: "Off", description: "Default priority" },
+			{ value: "5", label: "5", description: "Slightly lower" },
+			{ value: "10", label: "10", description: "Lower" },
+			{ value: "15", label: "15", description: "Well below interactive work" },
+			{ value: "19", label: "19", description: "Lowest priority" },
+		],
+	},
+});

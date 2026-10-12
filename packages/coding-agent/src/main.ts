@@ -142,6 +142,8 @@ import { cfgGoalEnabled } from "./goals/settings";
 import { cfgPlanDefaultOnStartup, cfgPlanEnabled } from "./plan-mode/settings";
 
 import { cfgAdvisorEnabled } from "./advisor/settings";
+import { applyProcessNice } from "./exec/process-priority";
+import { cfgProcessNice } from "./exec/settings";
 import { cfgToolsApprovalMode } from "./tools/settings";
 import {
 	cfgAutocompleteMaxVisible,
@@ -1873,6 +1875,11 @@ export async function runRootCommand(
 		}
 
 		const settingsInstance = await settingsPromise;
+		// Lower this process's scheduling priority (when configured) before any
+		// session starts, so every child it spawns — language servers, rustc
+		// workers, bash commands — inherits it. See `exec/process-priority.ts`.
+		// Skipped under the test runner so a developer's config cannot renice the suite.
+		if (!isBunTestRuntime()) applyProcessNice(cfgProcessNice.get(settingsInstance));
 		// Process-lifetime: broker/account-policy edits reconfigure the shared credential store.
 		createAuthStorageSettingsSync(settingsInstance, authStorage);
 		if (parsedArgs.approvalMode) {
