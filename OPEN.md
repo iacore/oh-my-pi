@@ -33,7 +33,7 @@ and the command's own text listing phrase it. The string is unchanged since the 
   merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
   intact at 80 columns where the old 48-character string ellipsized.
 
-## Rows with no cells inside a streamed table — field hole unreproduced, a viewport band reproduced
+## Rows with no cells inside a streamed table — band fixed on `custom` (`971cc3e7c4`), PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499) open upstream
 
 A reply whose body is a wide GFM table (`#renderTable`, `packages/tui/src/components/markdown.ts`)
 left four rows holding **no cells at all** inside one table row of the terminal's scrollback: the
@@ -81,6 +81,16 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   write the bytes with `tmux -L <sock> new -d … 'script -q -f out.raw -c "OMP_LAUNCH_MODE=ts omp"'`,
   hit the toggle (`setHideThinkingBlock` / tool-output expansion) while a table streams, and look for
   a bare `\n\r\n` (a row with no cells) inside a run of `│` rows.
+
+- **Landed as `971cc3e7c4` (PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499)).** The band
+  was the composer's top padding after all: a frame that shrank over committed history padded the
+  live area's top, so a collapsing block punched cell-less rows into the live tail, and a selection
+  could not paint them. The slack now falls below the live rows, which keeps the transcript
+  contiguous and the input on the bottom row. Verified: viewport row 0 was blank before and holds
+  the reply's first row after; the case in `packages/tui/test/composer-inline-shrink.test.ts` fails
+  on the parent commit; `packages/tui` is 3701 pass / 0 fail; the installed launcher links and its
+  suite is 13/13. The field hole's *history* variant was never reproduced in the harness, so if it
+  recurs after this fix, capture the bytes before touching the retire/commit path.
 
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
