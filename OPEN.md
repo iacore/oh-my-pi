@@ -1,5 +1,25 @@
 # Open items — omp-custom
 
+## `/session pin` palette wording — PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open against `origin/main`
+
+The row read *Pin the current provider to a stored OAuth account*: the provider as the pinned
+object, and nothing saying the pin is scoped to the session — the reading a user gets is a
+`/login`-style provider-wide account switch. `pinCurrentProviderOAuthAccount`
+(`packages/coding-agent/src/session/agent-session.ts`) pins one stored OAuth account as this
+session's credential for the current provider, which is also how `packages/ai/src/auth/affinity.ts`
+and the command's own text listing phrase it. The string is unchanged since the feature landed in
+`af9e8546a9`, so this is not a regression.
+
+- **Upstreamed, awaiting review.** Branch `fix/session-pin-help` (`91a926fc08`, worktree
+  `~/.omp/wt/session-pin-help-c8913466dd`) is pushed to `g`; the branch carries the
+  `## [Unreleased]` changelog entry with the PR link, which `custom` MUST NOT take.
+- **`custom` still shows the old row.** Nothing merged locally; `omp-custom` needs the
+  conflict-free merge plus `bun run setup` when the PR lands. Decide whether to take it into
+  `custom` ahead of that.
+- Verified on the branch: the TUI launched from the worktree on a pty, `/session ` → the `pin`
+  row read `Pin a stored OAuth account for this session`, intact at 80 columns where the old
+  48-character string ellipsized.
+
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
 `createAssistantMessageComponent` (`packages/tui/src/prompt/interactive-context-helpers.ts`)
