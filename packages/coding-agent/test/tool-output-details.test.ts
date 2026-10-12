@@ -129,6 +129,29 @@ describe("tool output details", () => {
 		}
 	});
 
+	it("strips terminal control bytes out of a renderer-provided summary", () => {
+		// `write` is renderer-backed: its summary detail is the model-supplied path,
+		// so this exercises the path that never reaches the generic branch.
+		const card = new ToolExecutionComponent(
+			"write",
+			{ path: "notes\u0007\u001b[2J.md", content: "x" },
+			{},
+			undefined,
+			uiStub,
+		);
+		try {
+			card.setToolOutputDetailsHidden(true);
+
+			const row = card.render(120).join("");
+
+			expect(row).not.toContain("\u0007");
+			expect(row).not.toContain("\u001b[2J");
+			expect(Bun.stripANSI(row)).toContain("Write");
+		} finally {
+			card.stopAnimation();
+		}
+	});
+
 	it("shortens a home-directory argument inside a device summary", () => {
 		const home = os.homedir();
 		// `write` targeting a device delegates its summary to the xdev helper, which

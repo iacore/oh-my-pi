@@ -181,26 +181,6 @@ describe("native transcript", () => {
 		expect(h.errors).toEqual([]);
 	});
 
-	it("drops a tool card's body clamp when the transcript folds tool output details", async () => {
-		let builder: ChatTranscriptBuilder | undefined;
-		const h = await startWith(h => {
-			builder = new ChatTranscriptBuilder({ ui: h.tui, cwd: "/tmp", requestRender: () => h.tui.requestRender() });
-			builder.append(toolTranscript());
-			h.tui.addChild(builder.container);
-		});
-		const cardId = h.find(node => node.k === "tool" && node.p?.role === "omp.tool.lookup_thing")!.id;
-		expect(h.byId(cardId)?.p?.preview).not.toBe("none");
-
-		builder!.container.setToolOutputDetailsHidden(true);
-		await h.render();
-		expect(h.byId(cardId)?.p).toMatchObject({ collapsed: true, preview: "none" });
-
-		builder!.container.setToolOutputDetailsHidden(false);
-		await h.render();
-		expect(h.byId(cardId)?.p?.preview).not.toBe("none");
-		expect(h.errors).toEqual([]);
-	});
-
 	it("keeps a streaming write open until it settles, then folds it like a finished thought", () => {
 		const ui = { requestRender: () => {}, requestComponentRender: () => {}, resetDisplay: () => {} };
 		const content = Array.from({ length: 40 }, (_, i) => `const v${i} = ${i};`).join("\n");
@@ -249,6 +229,26 @@ describe("native transcript", () => {
 		} finally {
 			tool.dispose();
 		}
+	});
+
+	it("drops a tool card's body clamp when the transcript folds tool output details", async () => {
+		let builder: ChatTranscriptBuilder | undefined;
+		const h = await startWith(h => {
+			builder = new ChatTranscriptBuilder({ ui: h.tui, cwd: "/tmp", requestRender: () => h.tui.requestRender() });
+			builder.append(toolTranscript());
+			h.tui.addChild(builder.container);
+		});
+		const cardId = h.find(node => node.k === "tool" && node.p?.role === "omp.tool.lookup_thing")!.id;
+		expect((h.byId(cardId)?.p as Record<string, unknown> | undefined)?.preview).not.toBe("none");
+
+		builder!.container.setToolOutputDetailsHidden(true);
+		await h.render();
+		expect(h.byId(cardId)?.p).toMatchObject({ collapsed: true, preview: "none" });
+
+		builder!.container.setToolOutputDetailsHidden(false);
+		await h.render();
+		expect((h.byId(cardId)?.p as Record<string, unknown> | undefined)?.preview).not.toBe("none");
+		expect(h.errors).toEqual([]);
 	});
 
 	it("keeps a finished todo call's checklist open", () => {

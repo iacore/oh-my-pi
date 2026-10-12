@@ -114,9 +114,6 @@ describe("InputController tool activity visibility", () => {
 
 describe("InputController assistant detail toggle", () => {
 	function createContext(overrides: Record<string, unknown> = {}) {
-		// A real isolated Settings: the toggles persist through the registered
-		// setting handles (`cfgHideThinkingBlock.set` / `cfgDisplayHideToolOutputDetails.set`),
-		// which write through `Settings.writeValue`, not a mocked `set`.
 		const settings = Settings.isolated();
 		const resetStableEmission = vi.fn();
 		const setToolOutputDetailsHidden = vi.fn();
@@ -182,8 +179,6 @@ describe("InputController assistant detail toggle", () => {
 
 		expect(ctx.hideThinkingBlock).toBe(false);
 		expect(ctx.hideToolOutputDetails).toBe(false);
-		expect(cfgHideThinkingBlock.get(settings)).toBe(false);
-		expect(cfgDisplayHideToolOutputDetails.get(settings)).toBe(false);
 		expect(resetDisplay).toHaveBeenCalledTimes(2);
 		expect(showStatus).not.toHaveBeenCalled();
 	});

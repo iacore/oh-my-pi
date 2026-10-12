@@ -3506,6 +3506,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		// Field comparisons skip effects the keybinding toggles already applied.
+		const hideToolOutputDetails = cfgDisplayHideToolOutputDetails.get(this.settings);
+		if (any("display.hideToolOutputDetails") && hideToolOutputDetails !== this.hideToolOutputDetails) {
+			this.hideToolOutputDetails = hideToolOutputDetails;
+			this.chatContainer.setToolOutputDetailsHidden(hideToolOutputDetails);
+		}
 		const hideToolActivity = cfgDisplayHideToolActivity.get(this.settings);
 		if (any("display.hideToolActivity") && hideToolActivity !== this.hideToolActivity) {
 			this.hideToolActivity = hideToolActivity;
@@ -3903,7 +3908,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			if (message.role !== "toolResult") continue;
 			const resolved = livePendingTools.get(message.toolCallId);
 			if (!resolved) continue;
-			// A background task's initial `async.state === "running"` result is
+			// A background job call's initial `async.state === "running"` result is
 			// persisted while `EventController#handleToolExecutionEnd` deliberately
 			// keeps its component in `pendingTools` so a later
 			// `tool_execution_update`/`_end` settles it. Such a handle is still
