@@ -5,6 +5,7 @@
 ### Added
 
 - Added `task.agentSoftRequestBudget` to give named subagents their own soft request budget, so a long-running agent can get more requests (or `0` for no guard) while scout, sonic and other agents keep theirs ([#15419](https://github.com/can1357/oh-my-pi/pull/15419) by [@will-bogusz](https://github.com/will-bogusz))
+- `display.hideToolOutputDetails` renders each tool call as its own one-line summary and hides its output body — on the assembled transcript and on Tern's native surface alike — and `app.display.toggleDetail` moves that together with the thinking-block toggle from a single key ([#11840](https://github.com/can1357/oh-my-pi/pull/11840) by [@iacore](https://github.com/iacore))
 
 ## [18.10.2] - 2026-10-12
 
