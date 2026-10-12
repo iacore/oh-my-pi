@@ -3506,11 +3506,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		// Field comparisons skip effects the keybinding toggles already applied.
-		const hideToolOutputDetails = cfgDisplayHideToolOutputDetails.get(this.settings);
-		if (any("display.hideToolOutputDetails") && hideToolOutputDetails !== this.hideToolOutputDetails) {
-			this.hideToolOutputDetails = hideToolOutputDetails;
-			this.chatContainer.setToolOutputDetailsHidden(hideToolOutputDetails);
-		}
 		const hideToolActivity = cfgDisplayHideToolActivity.get(this.settings);
 		if (any("display.hideToolActivity") && hideToolActivity !== this.hideToolActivity) {
 			this.hideToolActivity = hideToolActivity;
