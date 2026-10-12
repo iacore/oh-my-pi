@@ -955,6 +955,7 @@ export class ToolExecutionComponent extends Container {
 			this.#showImages,
 			this.#displayInputVersion,
 			this.#toolActivityVisible,
+			this.#toolOutputDetailsHidden,
 			getThemeEpoch(),
 		];
 		return this.#native.get(key, () =>
@@ -972,12 +973,14 @@ export class ToolExecutionComponent extends Container {
 
 	/**
 	 * The native `collapsed` prop: the transcript's expand state, except that a
-	 * view that asks to be {@link NativeToolView.open} never starts folded, and
-	 * a call streaming its body (edit, write) stays open until it settles, then
-	 * folds like a finished thought. The user's own toggle still wins meanwhile:
-	 * the terminal keeps local collapse state until this prop changes.
+	 * view that asks to be {@link NativeToolView.open} never starts folded, a
+	 * call streaming its body (edit, write) stays open until it settles, then
+	 * folds like a finished thought, and Ctrl+H's `hideToolOutputDetails` folds
+	 * every call to its summary regardless. The user's own toggle still wins
+	 * meanwhile: the terminal keeps local collapse state until this prop changes.
 	 */
 	#nativeCollapsed(status: TspCardStatus, view: NativeToolView): boolean {
+		if (this.#toolOutputDetailsHidden) return true;
 		if (view.open) return false;
 		const live = status === "pending" || status === "running";
 		return !this.#expanded && !(live && streamsBody(this.#toolName));
@@ -1043,7 +1046,13 @@ export class ToolExecutionComponent extends Container {
 				frame: inline ? "inline" : "card",
 				collapsible: hasBody,
 				collapsed: hasBody ? this.#nativeCollapsed(status, view) : undefined,
-				preview: hasBody ? (preview === "auto" ? { lines: DEFAULT_TERMINAL_PREVIEW_LINES } : preview) : undefined,
+				preview: hasBody
+					? this.#toolOutputDetailsHidden
+						? "none"
+						: preview === "auto"
+							? { lines: DEFAULT_TERMINAL_PREVIEW_LINES }
+							: preview
+					: undefined,
 				tools: view.tools,
 				tone: view.tone,
 			},
@@ -1111,7 +1120,7 @@ export class ToolExecutionComponent extends Container {
 				status,
 				collapsible: hasBody,
 				collapsed: hasBody ? this.#nativeCollapsed(status, view) : undefined,
-				preview: hasBody ? cardPreview(view.preview) : undefined,
+				preview: hasBody && !this.#toolOutputDetailsHidden ? cardPreview(view.preview) : undefined,
 			},
 			children,
 		);
