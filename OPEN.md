@@ -9,7 +9,7 @@ it never forced a rebuild — it only cluttered `git status`.
 - **Not upstreamed, deliberately.** Upstream carries the same `codegraph` integration, but the
   entry stays on `custom`; do not propose it again.
 
-## `/session pin` palette wording — PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open against `origin/main`
+## `/session pin` palette wording — on `custom` (`a060de43da`), PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open upstream
 
 The row read *Pin the current provider to a stored OAuth account*: the provider as the pinned
 object, and nothing saying the pin is scoped to the session — the reading a user gets is a
@@ -19,15 +19,19 @@ session's credential for the current provider, which is also how `packages/ai/sr
 and the command's own text listing phrase it. The string is unchanged since the feature landed in
 `af9e8546a9`, so this is not a regression.
 
-- **Upstreamed, awaiting review.** Branch `fix/session-pin-help` (`91a926fc08`, worktree
-  `~/.omp/wt/session-pin-help-c8913466dd`) is pushed to `g`; the branch carries the
-  `## [Unreleased]` changelog entry with the PR link, which `custom` MUST NOT take.
-- **`custom` still shows the old row.** Nothing merged locally; `omp-custom` needs the
-  conflict-free merge plus `bun run setup` when the PR lands. Decide whether to take it into
-  `custom` ahead of that.
-- Verified on the branch: the TUI launched from the worktree on a pty, `/session ` → the `pin`
-  row read `Pin a stored OAuth account for this session`, intact at 80 columns where the old
-  48-character string ellipsized.
+- **On `custom` as `a060de43da`.** The PR branch is based on `origin/main`, so merging it here
+  would have dragged the whole upstream drift custom has not taken — the attempt staged
+  `Cargo.lock`, `MODULE.bazel.lock` and `crates/…` against a tree 5026 commits behind. Landed
+  instead as a source-only integration commit built in
+  `~/.omp/wt/integrate-pin-help-5f67ef1bfb` and ff-merged into `omp-custom`. The changelog entry
+  stays on the PR branch (`skill://omp-change-and-install`), so Tern's `/changelog` does not list
+  the fix until the PR lands upstream.
+- **Upstream PR still open.** Branch `fix/session-pin-help` (`91a926fc08`, worktree
+  `~/.omp/wt/session-pin-help-c8913466dd`) is pushed to `g`; when it lands, its entry arrives with
+  `origin/main` and nothing else is left to carry.
+- Verified on the installed launcher (`~/.local/bin/omp` → this checkout, so it rebuilt after the
+  merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
+  intact at 80 columns where the old 48-character string ellipsized.
 
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
