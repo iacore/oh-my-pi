@@ -33,6 +33,41 @@ and the command's own text listing phrase it. The string is unchanged since the 
   merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
   intact at 80 columns where the old 48-character string ellipsized.
 
+## Rows with no cells committed inside a streamed table — observed once, not reproduced
+
+A reply whose body is a wide GFM table (`#renderTable`, `packages/tui/src/components/markdown.ts`)
+left four rows holding **no cells at all** inside one table row of the terminal's scrollback: the
+row's wrapped lines 1–2, then four empty rows, then line 3 (the row's remaining text). Seen with the
+installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp`) at 107 columns.
+
+- **Not a table-render defect.** `new Markdown(doc, 0, 0, getMarkdownTheme()).render(107)` over that
+  message's exact table (read back from the session JSONL) reproduces the column widths 13/19/72 and
+  every line break present in the scrollback, with zero blank rows in the whole table.
+- **Not a cell-highlighting rule.** A selection paints rows that hold cells — default-background
+  space cells included — and skips rows that hold none (measured on kitty 0.48.2 with this config's
+  font: spaces highlighted, bare `CRLF` and `EL` rows not). So those four rows reached the terminal
+  with no cells; that is how a blank row is written by construction, since `#lineRewriteSequence` +
+  `#terminalLine` (`packages/tui/src/tui.ts`) emit a blank line reset-only and the `blankRow` path
+  skips the erase ("re-erasing every row only adds terminal parser work").
+- **Searched for in ~55 runs and not found.** Streaming that table through the real components on a
+  `VirtualTerminal` (kitty-vt-wasm) left no blank row inside the table and no repeated row in native
+  history across: geometry 107x{24,30,40,50} and 100x{40,50} with 0/10/20/40 settled rows above;
+  chunk 4/12/24/60/400 characters; a frame per chunk and one per 2/3/5/7 chunks; the working loader
+  0→2→0, 3→0 and 5→0 before, during and after the stream; width resize 100→107 and 107→100, height
+  50→30 and 50→70, before, during and after the stream; the loader growing or shrinking around each
+  resize; a destructive `resetDisplay()` mid-stream and after finalize; the user scrolling back
+  10/25 rows mid-stream, after finalize, and across a resize; `setMidStreamPublication` both ways.
+- **Not a kitty reflow loss either.** 200 full-width table rows printed into kitty 0.48.2, then the
+  window narrowed 1000→700 px, the font 12→11→12, and the window widened back: `get-text --extent=all`
+  returned all 200 rows once, in order, with no gap.
+- **Unproven and unexcluded.** Nothing above rules out what a harness cannot model: real frame timing
+  under a pty, a QTile-driven resize, the terminal's own reflow with a live selection, or the
+  erase-then-scroll seam in the non-diffable paint (`#eraseBelowRow`, whose own comment concedes that
+  erased live rows may be pushed as blanks; `tui.ts:4231`'s chrome-into-history leak is upstream
+  #9783). No fix MUST be written before a capture shows the run: write the bytes with
+  `tmux -L <sock> new -d … 'script -q -f out.raw -c "OMP_LAUNCH_MODE=ts omp"'` and look for a bare
+  `\n\r\n` (a row with no cells) inside a run of `│` rows.
+
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
 `createAssistantMessageComponent` (`packages/tui/src/prompt/interactive-context-helpers.ts`)
