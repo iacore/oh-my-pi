@@ -270,9 +270,18 @@ Tern reaches omp with one of those, so the key was never the problem.
   `packages/tui/test/native/transcript-native.test.ts` ("folds a tool card's body
   when tool output details are hidden (Ctrl+H)"), which fails with the flag out of
   the memo key and passes with the fix.
-- **Not upstreamed.** No PR, no branch off `origin/main`. This is a genuine
-  upstream bug (native tool cards ignore `display.hideToolOutputDetails`), so it
-  is PR-worthy; the branch lands only if the user asks for one.
+- **Not upstreamable as a fix.** `hideToolOutputDetails` is custom-only: the
+  toggle, its setting and the whole setter chain came from `4353dbdb32`
+  (`feat(tui): folded thinking and tool output behind one detail toggle`,
+  2026-09-12), and `git grep hideToolOutputDetails origin/main` returns nothing.
+  Cherry-picking this fix onto today's `origin/main` (b947e4ac80) leaves
+  `#toolOutputDetailsHidden` undeclared and the guarded test errors, so an
+  upstream PR MUST carry the feature (the toggle plumbing across
+  `tool-execution.ts`, `transcript-container.ts`, `tool-activity.ts`,
+  `chat-transcript-builder.ts`, `read-tool-group.ts` and the modes wiring), not
+  this fix alone. A port branch for that exists at
+  `~/.omp/wt/tool-output-details-port-740f3e3154` (`port/tool-output-details`,
+  base 987429c3d7, uncommitted: one owner at a time).
 - **Tern's fold setting is a separate axis.** Tern's own "Fold tool calls"
   preference renders its native chat; this fix is about omp's prop so the
   keybinding and the setting agree.
