@@ -1,5 +1,27 @@
 # Open items — omp-custom
 
+## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
+
+`createAssistantMessageComponent` (`packages/tui/src/prompt/interactive-context-helpers.ts`)
+now passes `setMidStreamPublication(false)` for every wire instead of only the ones the
+`stream-revision` axis marks `possible`. A turn refused or rewritten after it streamed used to
+leave its published rows standing above the replacement: native scrollback cannot be
+retracted, and no VT100/ECMA-48 sequence addresses lines that already scrolled into history.
+
+- **Not upstreamed.** No PR and no branch off `origin/main`; `custom` MUST NOT carry a
+  changelog entry (per `skill://omp-change-and-install`).
+- **Cost.** Upstream's #11276 fix is traded away — a reply taller than the window clips its own
+  beginning while it streams, which lasts only until the turn ends.
+- **Only the publication is gated.** The machinery it drives (`#publishStableSnapshot`, the
+  stable snapshots, the container's append-head emission) stays in the tree but is never
+  enabled, so the next upstream merge does not conflict on it. Decide whether the fork should
+  delete it instead.
+- **Pressure retirement still runs mid-turn** for settled blocks (finished tool cards, earlier
+  turns) when the viewport overflows. That is ordinary scrolling rather than early
+  publication, and a rewrite of a settled turn still cannot retract its rows.
+- **No config key.** The flag is wired in code, so flipping it back needs a source edit and a
+  rebuild; decide whether it earns a setting.
+
 ## Compiled launcher started in `~/.omp/.dev-cwd` — fixed on `custom` (`3053707ab9`)
 
 `packages/coding-agent/scripts/omp` (local commit `4c843c0d0c`) `cd`s into
