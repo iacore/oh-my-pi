@@ -249,7 +249,7 @@ its text back through `setPromptDropped`, so interactive mode refills the editor
   video preview or other attachment submitted with the prompt is lost when the
   turn is restored. Decide whether the restore must carry them.
 
-## Ctrl+H did not fold tool detail in Tern — fixed on `custom` (`a99343c685`), not upstreamed
+## Ctrl+H did not fold tool detail in Tern — fixed on `custom` (`a99343c685`) and ported into PR #11840
 
 In a Tern pane, Ctrl+H folded the thinking blocks ("Thought for Xs" disappeared)
 but left every tool card at its full preview. `hideToolOutputDetails` reached the
@@ -279,9 +279,14 @@ Tern reaches omp with one of those, so the key was never the problem.
   upstream PR MUST carry the feature (the toggle plumbing across
   `tool-execution.ts`, `transcript-container.ts`, `tool-activity.ts`,
   `chat-transcript-builder.ts`, `read-tool-group.ts` and the modes wiring), not
-  this fix alone. A port branch for that exists at
-  `~/.omp/wt/tool-output-details-port-740f3e3154` (`port/tool-output-details`,
-  base 987429c3d7, uncommitted: one owner at a time).
+  this fix alone. **Carried by PR [#11840](https://github.com/can1357/oh-my-pi/pull/11840), ported onto current `main`.** On 2026-10-13 the PR branch `feat/tool-output-details` was re-based off `origin/main` (`987429c3d7` → `cf70057ee4`, built in
+  `~/.omp/wt/tool-output-details-port-740f3e3154` on branch
+  `port/tool-output-details`) and force-pushed, so the feature and this fold
+  travel together; GitHub now reports the PR `MERGEABLE` where it was
+  `CONFLICTING`. Re-verified on the port: 105 coding-agent tests (the four
+  feature files) + 162 tui transcript/tool-render tests + 41 read-group and
+  thinking-visibility tests pass, `check:types` is clean in `packages/tui` and
+  `packages/coding-agent`, and `oxlint`/`oxfmt --check` are clean.
 - **Tern's fold setting is a separate axis.** Tern's own "Fold tool calls"
   preference renders its native chat; this fix is about omp's prop so the
   keybinding and the setting agree.
