@@ -1,5 +1,14 @@
 # Open items — omp-custom
 
+## Local `.codegraph/` ignore — landed on `custom` (`5f67ef1bfb`), upstreaming declined
+
+`.gitignore` now carries `.codegraph/` under `# Project specific`. It is a per-checkout index
+(`codegraph init`), and the launcher's generation fingerprint already ignored untracked files, so
+it never forced a rebuild — it only cluttered `git status`.
+
+- **Not upstreamed, deliberately.** Upstream carries the same `codegraph` integration, but the
+  entry stays on `custom`; do not propose it again.
+
 ## `/session pin` palette wording — PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open against `origin/main`
 
 The row read *Pin the current provider to a stored OAuth account*: the provider as the pinned
