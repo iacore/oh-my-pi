@@ -33,7 +33,7 @@ and the command's own text listing phrase it. The string is unchanged since the 
   merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
   intact at 80 columns where the old 48-character string ellipsized.
 
-## Rows with no cells committed inside a streamed table — observed once, not reproduced
+## Rows with no cells inside a streamed table — field hole unreproduced, a viewport band reproduced
 
 A reply whose body is a wide GFM table (`#renderTable`, `packages/tui/src/components/markdown.ts`)
 left four rows holding **no cells at all** inside one table row of the terminal's scrollback: the
@@ -60,13 +60,27 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
 - **Not a kitty reflow loss either.** 200 full-width table rows printed into kitty 0.48.2, then the
   window narrowed 1000→700 px, the font 12→11→12, and the window widened back: `get-text --extent=all`
   returned all 200 rows once, in order, with no gap.
-- **Unproven and unexcluded.** Nothing above rules out what a harness cannot model: real frame timing
-  under a pty, a QTile-driven resize, the terminal's own reflow with a live selection, or the
-  erase-then-scroll seam in the non-diffable paint (`#eraseBelowRow`, whose own comment concedes that
-  erased live rows may be pushed as blanks; `tui.ts:4231`'s chrome-into-history leak is upstream
-  #9783). No fix MUST be written before a capture shows the run: write the bytes with
-  `tmux -L <sock> new -d … 'script -q -f out.raw -c "OMP_LAUNCH_MODE=ts omp"'` and look for a bare
-  `\n\r\n` (a row with no cells) inside a run of `│` rows.
+- **A band of the same shape reproduces — in the viewport, not in history.** A block above the live
+  tail collapsing (10 settled rows, a 25-row card, 2 loader rows, 107x50, card 25→1 at 70 % of the
+  stream) leaves a deterministic run of blank rows at the top of the live area — 7 of them at
+  viewport rows 0–6 with the answer below — inserted by `topPadding` in `renderFrame`
+  (`packages/tui/src/prompt/composer.ts`, `if (topPadding > 0) mutable.unshift(…)`). That padding is
+  deliberate ("Keep the input on the bottom row instead of stranding a band of blank rows under it"),
+  and it cannot be the field hole: `topPadding` keeps the frame at or under the screen height, so a
+  frame with slack never scrolls, and the slack is consumed by the next growth instead of being
+  pushed into history. Swept for anyway across 4 heights × 3 settled widths × 2 card sizes × 4
+  collapse points with a 90-row tail forcing everything into history: 0 blank rows inside a table.
+- **A committed prefix of a shrunken block does strand rows.** The same run leaves the collapsed
+  card's pre-collapse rows (`Tool output row 0…11`) standing in native history above the collapsed
+  remainder — history keeps the old shape, which is the "cannot be retracted" trade, not the hole.
+- **Still unexcluded.** The field hole needs a scroll that pushes *something* blank into native
+  history while the seam sits inside a table. Remaining suspects: the chrome-into-history leak
+  (`tui.ts:4231`, upstream #9783; "live chrome" is blank rows, and the field report counts 4–15 of
+  them), the erase-then-scroll seam in the non-diffable paint (`#eraseBelowRow`), and a commit-prefix
+  seam at a streaming table's block boundary. No fix MUST be written before a capture shows the run:
+  write the bytes with `tmux -L <sock> new -d … 'script -q -f out.raw -c "OMP_LAUNCH_MODE=ts omp"'`,
+  hit the toggle (`setHideThinkingBlock` / tool-output expansion) while a table streams, and look for
+  a bare `\n\r\n` (a row with no cells) inside a run of `│` rows.
 
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
