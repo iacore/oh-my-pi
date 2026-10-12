@@ -132,11 +132,12 @@ export function createAssistantMessageComponent(
 	// Read-result images are part of the tool output body, so both switches gate them.
 	component.setToolResultImagesVisible(!ctx.hideToolActivity && !ctx.hideToolOutputDetails);
 	component.setExpanded(ctx.toolOutputExpanded);
-	// A wire the `stream-revision` axis marks `possible` can rewrite text it has
-	// already streamed; published rows are unrecoverable once they reach native
-	// scrollback, so those wires keep finished lines in the live viewport.
-	const compat = ctx.viewSession.model?.compat;
-	const wireRevisable = compat !== undefined && "streamRevision" in compat && compat.streamRevision === "possible";
-	component.setMidStreamPublication(!wireRevisable);
+	// Published rows are unrecoverable once they reach native scrollback, so a turn
+	// refused or rewritten after streaming leaves the stale copy standing above the
+	// replacement. This fork therefore never publishes mid-turn, for any wire: the
+	// `stream-revision` axis no longer decides it, and finished lines stay in the
+	// live viewport until the turn ends (the cost #11276 traded away - a reply taller
+	// than the window clips its own beginning while it streams).
+	component.setMidStreamPublication(false);
 	return component;
 }
