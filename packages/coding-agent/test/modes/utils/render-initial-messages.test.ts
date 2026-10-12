@@ -200,6 +200,7 @@ function makeRenderCtx(
 		hideToolOutputDetails,
 		hideThinkingBlock: false,
 		assistantImagesVisible: showImages,
+		tableChartsVisible: true,
 		focusedAgentId: undefined,
 		editor: { addToHistory: vi.fn() },
 		viewSession: {
@@ -279,6 +280,7 @@ describe("UiHelpers.renderInitialMessages — queued messages", () => {
 		vi.spyOn(ctx.viewSession, "getQueuedMessages").mockReturnValue({
 			steering: ["steer now"],
 			followUp: ["queued one", "queued two"],
+			liveSteered: 0,
 		});
 
 		await new UiHelpers(ctx).renderInitialMessages({ clearTerminalHistory: true });

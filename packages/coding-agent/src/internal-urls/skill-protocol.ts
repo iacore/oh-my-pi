@@ -7,13 +7,15 @@
  * - skill://<name> - Reads SKILL.md
  * - skill://<name>/<path> - Reads relative path within skill's baseDir
  * - skill://<namespace>/<name>[/<path>] - Same, for a collision-namespaced skill
+ * - Any skill:// URI an MCP server advertises, when no loaded skill owns it - Reads that MCP resource
  */
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@oh-my-pi/pi-utils";
+import { isEnoent, logger } from "@oh-my-pi/pi-utils";
 import { resolveContainedPath } from "../discovery/contained-path";
 import { getActiveSkills, refreshActiveSkills, type Skill } from "../extensibility/skills";
+import { MCPManager } from "../mcp/manager";
 import skillDoc from "../prompts/internal-urls/skill.md" with { type: "text" };
 import {
 	buildDirectoryResource,
@@ -22,6 +24,7 @@ import {
 	UrlContainmentError,
 	validateRelativePath,
 } from "./filesystem-resource";
+import { readMcpResource } from "./mcp-protocol";
 import type {
 	InternalResource,
 	InternalUrl,
@@ -33,7 +36,7 @@ import type {
 	UrlCompletion,
 } from "./types";
 
-/** A skill name absent from the snapshot a lookup used. */
+/** No loaded skill owns the URL's name; the only miss an MCP server may fill. */
 class UnknownSkillError extends Error {}
 
 /**
@@ -81,7 +84,6 @@ async function withFreshSkills<T>(
 		return await attempt(fresh);
 	}
 }
-
 /**
  * Path a skill:// URL addresses, after traversal and plugin-root containment
  * checks. A bare URL addresses the skill's instruction file, or its base
@@ -168,7 +170,27 @@ export class SkillProtocolHandler implements ProtocolHandler {
 	}
 
 	async resolve(url: InternalUrl, context?: ResolveContext): Promise<InternalResource> {
-		return await withFreshSkills(context, skills => this.#resolveAgainst(url, skills));
+		try {
+			return await withFreshSkills(context, skills => this.#resolveAgainst(url, skills));
+		} catch (error) {
+			if (!(error instanceof UnknownSkillError)) throw error;
+			// Loaded skills always win; otherwise serve the resource an MCP server advertises under
+			// exactly this URI (Figma's `skill://figma/figma-use/SKILL.md`). Templates stay behind `mcp://`.
+			// A deferred MCP startup that fails cannot change the diagnosis: the skill is still unknown.
+			let mcpManager: MCPManager | undefined;
+			try {
+				mcpManager = await MCPManager.load();
+			} catch (loadError) {
+				if (context?.signal?.aborted) throw loadError;
+				logger.debug("MCP startup failed while resolving an unknown skill", { url: url.href, error: loadError });
+				throw error;
+			}
+			const resource =
+				mcpManager && (await readMcpResource(mcpManager, url, { exact: true, signal: context?.signal }));
+			if (!resource) throw error;
+			// The server, not a loaded skill, sizes this text: keep `read`'s normal result limits.
+			return { ...resource, unbounded: false };
+		}
 	}
 
 	/** Read the skill file or directory `url` addresses from one skill snapshot. */
@@ -205,9 +227,11 @@ export class SkillProtocolHandler implements ProtocolHandler {
 
 	/**
 	 * Skill file or directory; `options.directory` maps a bare `skill://<name>` to the skill base dir.
-	 * Null for a missing entry (or dangling symlink) without `create`, plugin skill or not.
-	 * A miss re-discovers skills from disk once, so a skill added or moved
-	 * mid-session is found without a restart.
+	 * Null for a missing entry (or dangling symlink) without `create`, plugin skill or not, and for a
+	 * name no loaded skill owns while MCP is available unless `options.localOnly`: an MCP server may
+	 * advertise the URL, which {@link resolve} settles (its servers may still be connecting). A miss
+	 * re-discovers skills from disk once, so a skill added or moved mid-session is found without a
+	 * restart.
 	 */
 	async locate(url: InternalUrl, context?: ResolveContext, options?: LocateOptions): Promise<string | null> {
 		try {
@@ -215,16 +239,13 @@ export class SkillProtocolHandler implements ProtocolHandler {
 		} catch (error) {
 			// Exhausted the retry: the addressed skill really is gone.
 			if (error instanceof MissingSkillFileError) return null;
+			if (error instanceof UnknownSkillError && !options?.localOnly && MCPManager.available()) return null;
 			throw error;
 		}
 	}
 
 	/** Resolve `url` against one skill snapshot; a bare miss throws to trigger the retry. */
-	async #locateAgainst(
-		url: InternalUrl,
-		skills: readonly Skill[],
-		options?: LocateOptions,
-	): Promise<string | null> {
+	async #locateAgainst(url: InternalUrl, skills: readonly Skill[], options?: LocateOptions): Promise<string | null> {
 		const targetPath = await skillTargetPath(url, skills, options?.directory === true, options?.create === true);
 		if (options?.create) return targetPath;
 		try {

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import { getProviderDefinition } from "@oh-my-pi/pi-ai/registry";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/registry/oauth";
-import { getEnvApiKey } from "@oh-my-pi/pi-ai/stream";
+import { getEnvApiKey } from "@oh-my-pi/pi-ai/env-api-key";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { isCatalogDescriptor, resolveModelCacheProviderId } from "@oh-my-pi/pi-catalog/provider-models";
 import { DEFAULT_MODEL_PER_PROVIDER, PROVIDER_DESCRIPTORS } from "@oh-my-pi/pi-catalog/provider-models/descriptors";
 import { lithosAiModelManagerOptions } from "@oh-my-pi/pi-catalog/provider-models/openai-compat";
@@ -124,10 +125,10 @@ describe("LithosAI provider support", () => {
 		// being folded into the ladder as a tier.
 		for (const id of LITHOSAI_ROSTER) {
 			const model = buildModel(lithosSpec(id));
-			expect(model.thinking?.efforts).toEqual(["low", "high", "max"]);
-			expect(model.thinking?.efforts).not.toContain("minimal");
-			expect(model.thinking?.efforts).not.toContain("xhigh");
-			expect(model.thinking?.efforts).not.toContain("none");
+			expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
+			expect(model.thinking?.efforts).not.toContain(Effort.Minimal);
+			expect(model.thinking?.efforts).not.toContain(Effort.XHigh);
+			expect((model.thinking?.efforts ?? []) as readonly string[]).not.toContain("none");
 		}
 	});
 

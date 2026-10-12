@@ -47,6 +47,8 @@ function makeFakeWorker(): FakeWorker {
 			worker.terminated = true;
 			handlers.clear();
 		},
+		ref() {},
+		unref() {},
 	};
 	return worker;
 }

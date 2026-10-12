@@ -23,7 +23,6 @@ import {
 	type TSchema,
 	toolWireSchema,
 	type UserMessage,
-	validateToolArguments,
 } from "@oh-my-pi/pi-ai";
 import {
 	type Dialect,
@@ -53,6 +52,7 @@ import {
 	recoverHarmonyToolCall,
 	signalListLabel,
 } from "@oh-my-pi/pi-ai/utils/harmony-leak";
+import { isDsmlLeakRecoveryTarget, removeDsmlToolMarkupLeak } from "@oh-my-pi/pi-ai/utils/dsml-leak";
 import { cloneJsonTree, logger, sanitizeText, structuredCloneJSON } from "@oh-my-pi/pi-utils";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import { LiveSteeringChannel } from "./live-steering";
@@ -75,7 +75,9 @@ import {
 	startExecuteToolSpan,
 	startInvokeAgentSpan,
 } from "./telemetry";
+import { validateAgentToolArguments } from "./tool-arguments";
 import { createAdditionalContextMessage, isNonBlankContext, joinAdditionalContext } from "./tool-context";
+import dsmlToolCallLeakPrompt from "./prompts/dsml-tool-call-leak.md" with { type: "text" };
 import type {
 	AgentContext,
 	AgentEvent,
@@ -115,6 +117,14 @@ const ABORTED: unique symbol = Symbol("agent-loop-aborted");
  * must not spin the loop forever. Resets whenever a turn carries tool calls.
  */
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
+
+/**
+ * Cap on consecutive "tool call failed" nudges for a turn that ended with raw
+ * DeepSeek DSML tool-call markup in its text and no structured call. A model
+ * that keeps leaking after this many corrections is left to yield. Resets
+ * whenever a turn carries tool calls.
+ */
+const MAX_DSML_LEAK_NUDGES = 2;
 
 /**
  * Cap on consecutive forced escalations for a single soft tool requirement.
@@ -1226,6 +1236,7 @@ async function runLoopBody(
 		let harmonyRetryAttempt = 0;
 		let harmonyTruncateResumeCount = 0;
 		let pausedTurnContinuations = 0;
+		let dsmlLeakNudges = 0;
 
 		// Soft tool requirement lifecycle (reminder then escalation; see SoftToolRequirement).
 		// The host-owned state survives only a gate stop between Agent.prompt calls.
@@ -1689,6 +1700,7 @@ async function runLoopBody(
 
 				if (toolCalls.length > 0) {
 					pausedTurnContinuations = 0;
+					dsmlLeakNudges = 0;
 				} else if (
 					!hasMoreToolCalls &&
 					message.stopReason === "stop" &&
@@ -1701,6 +1713,25 @@ async function runLoopBody(
 					// working; the next round folds steering/asides in like any other
 					// mid-work turn.
 					pausedTurnContinuations++;
+					hasMoreToolCalls = true;
+				} else if (
+					!hasMoreToolCalls &&
+					message.stopReason === "stop" &&
+					dsmlLeakMessages.has(message) &&
+					dsmlLeakNudges < MAX_DSML_LEAK_NUDGES
+				) {
+					// DeepSeek wrote its tool call as raw DSML text the healer could not
+					// recover (often missing the opening envelope). The markup was
+					// stripped before commit; without a nudge the loop would yield as if
+					// the model were done, so tell it the call failed and re-sample.
+					const nudge = injectExecutionAdditionalContext(
+						currentContext,
+						newMessages,
+						stream,
+						dsmlToolCallLeakPrompt,
+					);
+					if (nudge) additionalMessages.push(nudge);
+					dsmlLeakNudges++;
 					hasMoreToolCalls = true;
 				}
 
@@ -1971,6 +2002,7 @@ async function streamAssistantResponse(
 	// per model without touching the shared session `serviceTier`.
 	const effectiveServiceTier = config.getServiceTier ? config.getServiceTier(model) : config.serviceTier;
 	const harmonyMitigationEnabled = isHarmonyLeakMitigationTarget(model);
+	const dsmlLeakRecoveryEnabled = isDsmlLeakRecoveryTarget(model);
 	const harmonyAbortController = harmonyMitigationEnabled ? new AbortController() : undefined;
 	const requestSignal = harmonyAbortController
 		? signal
@@ -2200,6 +2232,18 @@ async function streamAssistantResponse(
 							}
 						}
 						finalMessage = snapshotAssistantMessage(finalMessage);
+						// Unhealed DSML tool-call markup must never reach history: replaying
+						// it teaches the model to keep writing calls as text (#10556). Strip
+						// it before the context, the UI, and the session see the message.
+						// Only DSML-speaking models qualify; from others it is prose.
+						if (
+							dsmlLeakRecoveryEnabled &&
+							finalMessage.stopReason === "stop" &&
+							!finalMessage.content.some(block => block.type === "toolCall") &&
+							removeDsmlToolMarkupLeak(finalMessage)
+						) {
+							dsmlLeakMessages.add(finalMessage);
+						}
 						// Expand inline macros (and any other registered rewrite) on the
 						// finalized message before it reaches the context, the UI, or tool
 						// dispatch — so a single mutation is the source of truth for all three.
@@ -2756,6 +2800,9 @@ interface PreparedToolCall {
 	prepareError?: unknown;
 }
 
+/** Committed assistant messages whose unhealed DSML tool-call markup was stripped; the loop answers them with a failure nudge. */
+const dsmlLeakMessages = new WeakSet<AssistantMessage>();
+
 /**
  * Prepare results computed in the stream-done branch (before `message_start`/
  * `message_end`) so a `beforeToolCall` args revision is baked into the message
@@ -3019,15 +3066,9 @@ async function prepareToolCallDispatch(
 				if (!tool) {
 					throw new Error(formatToolNotFoundMessage(toolCall.name, context.tools, suggestFallbackToolNames?.()));
 				}
-				return validateToolArguments(tool, { ...toolCall, arguments: args });
+				return validateAgentToolArguments(tool, { ...toolCall, arguments: args });
 			} catch (validationError) {
-				// Lenience covers schema mismatches; a parse failure has no args to hand over.
 				const parseFailed = "__parseError" in args;
-				if (tool?.lenientArgValidation && !parseFailed) {
-					const fallback = { ...args };
-					delete fallback.__rawJson;
-					return fallback;
-				}
 				entry.args = parseFailed ? { __parseError: args.__parseError } : args;
 				entry.validationErrorMessage =
 					validationError instanceof Error ? validationError.message : String(validationError);
@@ -3167,6 +3208,7 @@ async function executeToolCalls(
 		hasSteeringMessages,
 		hasIrcInterrupts,
 		hasBackgroundCompletions,
+		hasQueuedAsides,
 		interruptMode = "immediate",
 		getToolContext,
 
@@ -3268,11 +3310,12 @@ async function executeToolCalls(
 		// (only when soft interrupts are enabled; otherwise nothing is left).
 		if (signal?.aborted) return;
 		if (interruptState.triggered && (!softInterrupts || steeringSoftController.signal.aborted)) return;
-		// Peer IRC and background completions (finished jobs, exited supervised
-		// processes) hard-abort interruptible waits only; foreground tools keep
-		// running (no partial side effects).
+		// Peer IRC, queued asides and background completions (finished jobs,
+		// exited supervised processes) hard-abort interruptible waits only;
+		// foreground tools keep running (no partial side effects).
 		let source: AsideInterruptSource | undefined;
 		if (hasIrcInterrupts && (await hasIrcInterrupts())) source = "irc";
+		else if (!interruptState.triggered && hasQueuedAsides && (await hasQueuedAsides())) source = "aside";
 		else if (!interruptState.triggered && hasBackgroundCompletions && (await hasBackgroundCompletions()))
 			source = "background";
 		if (!source) return;
@@ -3289,7 +3332,7 @@ async function executeToolCalls(
 		// also cascades: the freshly detached job's own completion re-triggers
 		// this check for the next command, so millisecond-long commands chain
 		// into separate background deliveries (#12869).
-		if (source !== "background" && softInterrupts) steeringSoftController.abort();
+		if (source === "irc" && softInterrupts) steeringSoftController.abort();
 	};
 
 	const checkSteering = async (): Promise<void> => {
@@ -3660,7 +3703,8 @@ async function executeToolCalls(
 	// (auto-background bash), so the boundary dequeue below injects the message
 	// promptly. In "wait" mode only a batch holding an interruptible wait needs
 	// the watch; checkSteering is idempotent (no-op once triggered).
-	const hasAsidePeek = hasIrcInterrupts !== undefined || hasBackgroundCompletions !== undefined;
+	const hasAsidePeek =
+		hasIrcInterrupts !== undefined || hasBackgroundCompletions !== undefined || hasQueuedAsides !== undefined;
 	const watchSteeringWhileRunning =
 		(softInterrupts || records.some(record => record.interruptible)) &&
 		(hasSteeringMessages !== undefined || hasAsidePeek);
@@ -3946,8 +3990,8 @@ function createToolSignalAbortedResult(signal: AbortSignal): AgentToolResult<unk
 	};
 }
 
-/** Origin of a mid-batch interrupt: queued steering, a peer IRC, or a background completion notice. */
-type AsideInterruptSource = SteeringInterruptSource | "irc" | "background";
+/** Origin of a mid-batch interrupt: queued steering, a peer IRC, a queued aside, or a background completion notice. */
+type AsideInterruptSource = SteeringInterruptSource | "irc" | "aside" | "background";
 
 function createSkippedToolResult(
 	source: AsideInterruptSource | undefined,
@@ -3967,6 +4011,9 @@ function createSkippedToolResult(
 	} else if (source === "irc") {
 		reason = "pending peer interrupt";
 		blocker = "interrupt";
+	} else if (source === "aside") {
+		reason = "a queued aside message";
+		blocker = "aside";
 	} else if (source === "background") {
 		reason = "a queued background completion (job or supervised process)";
 		blocker = "completion notice";

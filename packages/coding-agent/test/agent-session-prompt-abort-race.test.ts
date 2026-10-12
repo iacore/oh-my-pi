@@ -144,7 +144,7 @@ describe("AgentSession prompt admission racing abort", () => {
 		// "start" comes back too: the abort also interrupted that turn before the mock
 		// streamed anything, so its unanswered prompt is handed to the host as well.
 		expect(dropped).toEqual(["start", "queue while normalizing"]);
-		expect(session.getQueuedMessages()).toEqual({ steering: [], followUp: [] });
+		expect(session.getQueuedMessages()).toEqual({ steering: [], followUp: [], liveSteered: 0 });
 		expect(calls).toBe(1);
 	});
 
