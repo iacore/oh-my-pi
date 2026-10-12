@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+## Compiled launcher started in `~/.omp/.dev-cwd` — fixed on `custom` (`3053707ab9`)
+
+`packages/coding-agent/scripts/omp` (local commit `4c843c0d0c`) `cd`s into
+`${OMP_DEV_LAUNCH_DIR:-$HOME/.omp/.dev-cwd}` before it picks a launch path, but only the
+source path ever came back: the restore lives in the Bun `--preload` shim
+(`scripts/omp.ts`), which the compiled artifact never loads. Any `auto` launch that hit
+the memoized `dist/omp` therefore ran with `process.cwd()` = `~/.omp/.dev-cwd`, and
+`getProjectDir()` (`packages/utils/src/dirs.ts`) is just `process.cwd()`, so that whole
+directory was treated as the project.
+
+Measured before the fix: `omp read .` from `/tmp/omp-cwd-probe` returned
+`.omp/ssh.json`, which exists under `~/.omp/.dev-cwd/.omp/` (19:17) and not in the probe
+dir; `~/.omp/agent/sessions/-.omp-.dev-cwd/` holds the sessions from that window. Fix:
+the `mkdir`/`cd`/`OMP_LAUNCH_CWD` export moved inside `launch_source()`, so the compiled
+path keeps the caller's cwd. Verified after: `omp read .` from a fresh
+`/tmp/omp-cwd-probe3` lists `only-here.txt`, and `OMP_LAUNCH_MODE=ts` from the same
+directory still resolves `.` there through the shim.
+
+- **Committed locally, not upstreamed.** Landed as `3053707ab9` together with the
+  launcher's untracked-file fingerprint change (`--untracked-files=no`, so a
+  `.codegraph/` index no longer forces a rebuild) and `bun setup`'s removal of the
+  `bun --cwd=packages/coding-agent link` step plus the `OMP_BIN_DIR`-aware Windows
+  linker. The launcher sees a moved generation on the next `omp` invocation and rebuilds
+  `dist/omp`. Decide whether this goes upstream; `custom` MUST NOT carry a changelog
+  entry (per `skill://omp-change-and-install`).
+- **Stale project state.** Sessions and `.omp/ssh.json` written under `~/.omp/.dev-cwd`
+  while the compiled path was in use stay where they are; nothing is migrated. Decide
+  whether they should be moved into the real project directories.
+
 ## Upstream merge — landed on `custom` (`d741066820`), 2026-10-12
 
 `Merge origin/main into custom (2681 commits)` took the tree from upstream
