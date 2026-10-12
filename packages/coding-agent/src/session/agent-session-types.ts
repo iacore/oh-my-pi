@@ -416,9 +416,12 @@ export interface PromptOptions {
 	onPromptAdmitted?: () => void;
 }
 
-/** Payload for {@link AgentSession.setPromptDropped}: a user prompt cancelled
- *  before it reached the agent (an abort or usage preflight denial raced turn
- *  setup), so it was never persisted to the session. */
+/** Payload for {@link AgentSession.setPromptDropped}: a user prompt that is no
+ *  longer part of the conversation, so the host must hold it instead of losing
+ *  it. Either it was cancelled before it reached the agent (an abort or usage
+ *  preflight denial raced turn setup, so it was never persisted), or the turn it
+ *  started was interrupted before the model emitted anything and both the prompt
+ *  and its empty assistant turn were dropped from the branch. */
 export interface DroppedPrompt {
 	/** The prompt exactly as typed, before template/command expansion. */
 	text: string;

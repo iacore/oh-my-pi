@@ -3325,10 +3325,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Hands back a prompt the session dropped before dispatch (an Esc abort or
-	 * usage preflight denial raced turn setup). The message was never persisted,
-	 * so the tree/branch selectors cannot offer it — remove the optimistic
-	 * transcript row and put the typed text back in the editor for editing.
+	 * Hands back a prompt that left the conversation: dropped before dispatch (an
+	 * Esc abort or usage preflight denial raced turn setup), or the opening prompt
+	 * of a turn an interrupt ended before the model emitted anything. Neither is
+	 * on the branch any more, so the tree/branch selectors cannot offer it —
+	 * remove the optimistic transcript row and put the typed text back in the
+	 * editor for editing.
 	 */
 	#restoreDroppedPrompt(prompt: DroppedPrompt): void {
 		this.clearOptimisticUserMessage();

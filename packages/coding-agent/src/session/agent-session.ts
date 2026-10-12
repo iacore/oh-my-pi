@@ -394,7 +394,7 @@ import type { CacheWarmer, CacheWarmingMode, CacheWarmingStatus } from "./cache-
 import { isUserRequestEntry, transcriptEntryMessage, userTurnDraft } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import { formatSessionDumpText, formatSubagentDumpText, type SessionDumpArchive } from "./session-dump-format";
 import { collectSubSessions, type SubSession } from "./sub-sessions";
-import type { BranchSummaryEntry, NewSessionOptions } from "./session-entries";
+import type { BranchSummaryEntry, NewSessionOptions, SessionEntry } from "./session-entries";
 import { SessionHandoff, type SessionHandoffHost } from "./session-handoff";
 import {
 	COMPACTION_CHECK_NONE,
@@ -719,18 +719,20 @@ export class AgentSession implements SettingsScope {
 	/** Tail of the serialized {@link refreshSkillsAndCommands} chain. */
 	#skillsAndCommandsRefresh: Promise<void> = Promise.resolve();
 	/**
-	 * Raw text the caller originally submitted for a queued plain `role: "user"`
-	 * message — before slash/custom-command rewriting, prompt-template expansion,
-	 * or `^model` mention substitution. Recorded by `#queueUserMessage`, the same
-	 * point `#queueCustomMessage` stamps `__queueChipText` for skill invocations;
-	 * a side map (not a message field) because `UserMessage` has no free-form
-	 * details slot to carry it, and it must never reach the model or persisted
-	 * session content. `removeQueuedMessage` matches against it so an RPC client
-	 * removing by the exact text it submitted can find its own transformed queued
-	 * entry without unsafely replaying a (possibly side-effecting) slash/custom
-	 * command.
+	 * Raw text the caller originally submitted for a plain `role: "user"` message
+	 * — before slash/custom-command rewriting, prompt-template expansion, or
+	 * `^model` mention substitution. Recorded by `#queueUserMessage` and by the
+	 * dispatch path in `prompt()`, the same point `#queueCustomMessage` stamps
+	 * `__queueChipText` for skill invocations; a side map (not a message field)
+	 * because `UserMessage` has no free-form details slot to carry it, and it must
+	 * never reach the model or persisted session content. `removeQueuedMessage`
+	 * matches against it so an RPC client removing by the exact text it submitted
+	 * can find its own transformed queued entry without unsafely replaying a
+	 * (possibly side-effecting) slash/custom command, and
+	 * `#restoreInterruptedEmptyPrompt` returns it to the editor when an interrupt
+	 * ends a turn before the model emitted anything.
 	 */
-	readonly #queuedMessageRawText = new WeakMap<AgentMessage, string>();
+	readonly #messageRawText = new WeakMap<AgentMessage, string>();
 
 	// Event subscription state
 	#unsubscribeAgent?: () => void;
@@ -3444,6 +3446,76 @@ export class AgentSession implements SettingsScope {
 		};
 	}
 
+	/**
+	 * Hand a prompt back to the host's editor when an interrupt ended its turn
+	 * before the model emitted anything.
+	 *
+	 * Such a turn leaves a user message with an empty aborted assistant message
+	 * after it and nothing else: `/continue` has nothing to resume, and the next
+	 * prompt would replay a user turn that was never answered. Both messages are
+	 * therefore dropped — from the live context and from the persisted branch, or
+	 * a reload would replay them — and the text is returned to the host through
+	 * the same {@link setPromptDropped} channel a pre-dispatch drop uses, so
+	 * interactive mode puts it back in the editor for editing.
+	 *
+	 * Only a host that registered a drop handler may rewind: every other host
+	 * (print, RPC, ACP) keeps its transcript exactly as it does today.
+	 *
+	 * Deliberately fires only on a genuine user interrupt
+	 * ({@link isUserInterruptAbort}) with no content at all — thinking counts as
+	 * output, since the user saw it before pressing Esc.
+	 */
+	#restoreInterruptedEmptyPrompt(assistantMessage: AssistantMessage): void {
+		const restore = this.#promptDropped;
+		if (!restore) return;
+		if (assistantMessage.stopReason !== "aborted" || !isUserInterruptAbort(assistantMessage)) return;
+		if (assistantMessage.content.length > 0) return;
+
+		const messages = this.agent.state.messages;
+		if (messages[messages.length - 1] !== assistantMessage) return;
+		const userMessage = messages[messages.length - 2];
+		// A synthetic prompt dispatches as `developer`, and a steered message opens
+		// no turn: neither is the typed prompt this restores.
+		if (userMessage?.role !== "user" || userMessage.steering) return;
+
+		// Without a persisted entry the message never reached the session file, so
+		// there is no branch to cut — leave that case to the drop-before-dispatch
+		// path, which already owns it.
+		const entry = this.#findPersistedMessageEntry(userMessage);
+		if (!entry) return;
+
+		const queued = toRestoredQueuedMessage(userMessage);
+		const rawText = this.#messageRawText.get(userMessage);
+		const text = rawText ?? (queued.text === "[Image]" ? "" : queued.text);
+		if (!text.trim() && !queued.images?.length) return;
+
+		this.#bash.withBranchTransition(() => {
+			if (entry.parentId === null) this.sessionManager.resetLeaf();
+			else this.sessionManager.branch(entry.parentId);
+		});
+		this.agent.replaceMessages(messages.filter(message => message !== userMessage && message !== assistantMessage));
+		this.#messageRawText.delete(userMessage);
+		restore({ text, images: queued.images });
+	}
+
+	/**
+	 * The current branch's message entry for {@link message}, matching the way
+	 * duplicate detection does ({@link sessionMessagePersistenceKey} plus
+	 * {@link sameMessageContent}) because only assistant messages carry their
+	 * persisted entry id. `undefined` when the message was never persisted.
+	 */
+	#findPersistedMessageEntry(message: AgentMessage): SessionEntry | undefined {
+		const key = sessionMessagePersistenceKey(message);
+		const branch = this.sessionManager.getBranch();
+		for (let index = branch.length - 1; index >= 0; index--) {
+			const entry = branch[index];
+			if (entry.type !== "message") continue;
+			if (key !== undefined && sessionMessagePersistenceKey(entry.message) === key) return entry;
+			if (sameMessageContent(entry.message, message)) return entry;
+		}
+		return undefined;
+	}
+
 	async #persistTurnMessagesForMidRunCompaction(context: AgentTurnEndContext | undefined): Promise<boolean> {
 		if (!context) return true;
 		const turnMessages = [context.message, ...context.toolResults, ...(context.additionalMessages ?? [])];
@@ -3578,6 +3650,9 @@ export class AgentSession implements SettingsScope {
 				// suppression, not the text).
 				message.errorId = AIError.create(AIError.Flag.SilentAbort);
 			}
+			// The abort reason is stamped by now, so a user interrupt that produced
+			// nothing is recognizable: give the unanswered prompt back to the editor.
+			this.#restoreInterruptedEmptyPrompt(message);
 		}
 
 		const interruptedThinkingMessage =
@@ -7088,6 +7163,11 @@ export class AgentSession implements SettingsScope {
 					userInitiated: options?.userInitiated === true ? true : undefined,
 				}
 			: { role: "user" as const, content: userContent, attribution: promptAttribution, timestamp: submittedAt };
+		// Keep the text as typed alongside the dispatched message, the same way the
+		// queue paths do: an interrupt can end this turn before the model emits
+		// anything, and the editor restore must return what the user wrote rather
+		// than the expanded form that reached the agent.
+		if (message.role === "user") this.#messageRawText.set(message, typedText);
 
 		const preludeMessages: AgentMessage[] = [];
 		if (eagerTodoPrelude) {
@@ -7932,7 +8012,7 @@ export class AgentSession implements SettingsScope {
 			prependMessages?: readonly CustomMessage[];
 			/** Text the caller originally submitted, before slash/custom-command
 			 *  rewriting, prompt-template expansion, or `^model` mention substitution.
-			 *  Recorded via `#queuedMessageRawText` so `removeQueuedMessage` can match
+			 *  Recorded via `#messageRawText` so `removeQueuedMessage` can match
 			 *  it later. Defaults to `text` (the common case: no transformation ran,
 			 *  so raw and queued content are identical). */
 			rawText?: string;
@@ -7998,7 +8078,7 @@ export class AgentSession implements SettingsScope {
 			const records: AgentMessage[] = [...prependMessages, ...attachmentSourceNotices];
 			if (imageDescriptionNotice) records.push(imageDescriptionNotice);
 			const userMessage: AgentMessage = { role: "user", content, attribution, timestamp: timestamp ?? Date.now() };
-			this.#queuedMessageRawText.set(userMessage, rawText);
+			this.#messageRawText.set(userMessage, rawText);
 			records.push(userMessage);
 			this.#irc.queueAside(records);
 			options?.onPromptAdmitted?.();
@@ -8021,7 +8101,7 @@ export class AgentSession implements SettingsScope {
 				attribution,
 				timestamp: timestamp ?? Date.now(),
 			};
-			this.#queuedMessageRawText.set(userMessage, rawText);
+			this.#messageRawText.set(userMessage, rawText);
 			this.agent.followUp(userMessage);
 		} else {
 			for (const notice of prependMessages) this.agent.steer(notice);
@@ -8034,7 +8114,7 @@ export class AgentSession implements SettingsScope {
 				attribution,
 				timestamp: timestamp ?? Date.now(),
 			};
-			this.#queuedMessageRawText.set(userMessage, rawText);
+			this.#messageRawText.set(userMessage, rawText);
 			this.agent.steer(userMessage);
 		}
 		options?.onPromptAdmitted?.();
@@ -8711,7 +8791,7 @@ export class AgentSession implements SettingsScope {
 	 */
 	#findQueuedUserMessage(queue: readonly AgentMessage[], text: string): number {
 		let index = queue.findIndex(
-			message => isUserAuthoredQueuedMessage(message) && this.#queuedMessageRawText.get(message) === text,
+			message => isUserAuthoredQueuedMessage(message) && this.#messageRawText.get(message) === text,
 		);
 		if (index < 0) {
 			index = queue.findIndex(message => isUserAuthoredQueuedMessage(message) && queueChipText(message) === text);
@@ -9092,8 +9172,9 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/** Install the host hook that receives a typed user prompt dropped before
-	 *  dispatch (an Esc abort or usage preflight denial raced turn setup). The
-	 *  prompt never reached the agent or the session file, so without this hook
+	 *  dispatch (an Esc abort or usage preflight denial raced turn setup), or the
+	 *  turn it started was interrupted before the model emitted anything. The
+	 *  prompt is not part of the conversation in either case, so without this hook
 	 *  it would vanish; interactive mode restores it to the editor for editing. */
 	setPromptDropped(handler: ((prompt: DroppedPrompt) => void) | undefined): void {
 		this.#promptDropped = handler;
