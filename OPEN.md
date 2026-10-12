@@ -238,3 +238,31 @@ its text back through `setPromptDropped`, so interactive mode refills the editor
   builds its payload from `toRestoredQueuedMessage` (text + image blocks), so a
   video preview or other attachment submitted with the prompt is lost when the
   turn is restored. Decide whether the restore must carry them.
+
+## Ctrl+H did not fold tool detail in Tern — fixed on `custom` (`a99343c685`), not upstreamed
+
+In a Tern pane, Ctrl+H folded the thinking blocks ("Thought for Xs" disappeared)
+but left every tool card at its full preview. `hideToolOutputDetails` reached the
+native presentation nowhere in `ToolExecutionComponent`
+(`packages/tui/src/chat/tool-execution.ts`): the ANSI path folds on it
+(`render` → `#renderCompact(width, true)`), but the TSP `describe` key omitted
+`#toolOutputDetailsHidden`, so a toggle re-described nothing, and neither
+`#nativeCollapsed` nor the `preview` prop read the flag — `read-tool-group` was
+already correct, this was the generic card. Measured omp's matcher directly
+(`packages/natives/native/pi_natives.linux-x64-modern.node`): only the bare
+`\x08` collides with Backspace (`\x08` → `backspace`, not `ctrl+h`); both
+`\x1b[27;5;104~` and `\x1b[104;5u` match `ctrl+h`, and the user's keypress proves
+Tern reaches omp with one of those, so the key was never the problem.
+
+- Fix: `#toolOutputDetailsHidden` now forces `collapsed: true` and drops the
+  body clamp (`preview: "none"`, or no preview on the fallback card), and joins
+  the `describe` memo key. Guarded by
+  `packages/tui/test/native/transcript-native.test.ts` ("folds a tool card's body
+  when tool output details are hidden (Ctrl+H)"), which fails with the flag out of
+  the memo key and passes with the fix.
+- **Not upstreamed.** No PR, no branch off `origin/main`. This is a genuine
+  upstream bug (native tool cards ignore `display.hideToolOutputDetails`), so it
+  is PR-worthy; the branch lands only if the user asks for one.
+- **Tern's fold setting is a separate axis.** Tern's own "Fold tool calls"
+  preference renders its native chat; this fix is about omp's prop so the
+  keybinding and the setting agree.
