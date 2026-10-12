@@ -1,6 +1,29 @@
 # Open items — omp-custom
 
-## Process niceness for spawned tools — in the working tree, uncommitted
+## Upstream merge — landed on `custom` (`d741066820`), 2026-10-12
+
+`Merge origin/main into custom (2681 commits)` took the tree from upstream
+18.5.1 to 18.10.1. Built in `~/.omp/wt/merge-upstream-20261012` (branch
+`merge/upstream-20261012`), ff-merged into `omp-custom`. `packages/natives`
+changed, so `bun run setup` rebuilt the native addon (18.10.1) and relinked
+`~/.local/bin/omp`. `bun run check:ts` clean; the catalog, tui, and mnemopi
+suites are green on the merged tree.
+
+- **TUI streaming retirement now follows upstream's refined append path**:
+  overflow-sized emission, and a stable prefix reaching onto the screen waits.
+  Custom's uncapped emission (`c2baf3c5df`) and the test that pinned it were
+  dropped — it was the cruder form of the same feature and opened a blank band
+  once the working loader shrank (`composer-inline-shrink`). The trade kept: the
+  live area may hold an on-screen stable prefix, which is the cost of never
+  stranding a row above the live tail.
+- **Pre-existing failures on this box**, not merge regressions — the same files
+  fail on `custom` at `adf9758c9e`: `stats/test/fork-dedup` (1),
+  `task/worktree` (2), `task/parked-subagent-session-release` (2), plus
+  in-suite-only failures caused by missing externals (browser/Chrome, Electron,
+  npm and HTML-export builds, `SYSTEM.md` discovery ordering).
+- **`bun.lock` took upstream's side** and was re-resolved with `bun install`.
+
+## Process niceness for spawned tools — landed on `custom` (`1a753eb8b8`)
 
 `process.nice` lowers the scheduling priority of omp and every process it spawns, so
 `tsgo` (the TypeScript LSP) and `cargo`/`rustc` can no longer pin every core and freeze
