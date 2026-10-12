@@ -871,6 +871,7 @@ The `cost` segment shows recorded session costs. For an active provider/model wi
 | `startup.showSplash` | boolean | `false` | Show the full setup animation on ordinary interactive startup without rerunning setup. |
 | `startup.changelogMode` | enum | `summary` | `summary`, `expanded`, `hidden`: choose startup release-note presentation. |
 | `startup.setupWizard` | boolean | `true` | Show newly added onboarding steps once per setup version. |
+| `process.nice` | number | `0` | Linux niceness (0–19) applied to omp and every process it spawns, so builds and language servers yield to interactive work; takes effect on the next launch. |
 
 ### Providers and services
 
