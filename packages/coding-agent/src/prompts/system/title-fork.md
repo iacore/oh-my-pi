@@ -18,7 +18,7 @@ Name this session with a 1-5 word label for the subject of the user's task, in t
 {{#if card}}
 - code: 1-6 capital letters or digits, never more, that name the subject at a glance, made from one word or name in the title: the whole word when it has 6 letters or fewer (SEED, SCOPE, FREEZE, Z3, 404), else cut to its first syllable or leading consonants (PROV for provider, FLBK for fallback). Never initials of several words unless the user writes them so (CTA, SDK), nor a code that passes for an unrelated name.
 {{/if}}
-- Title: the subject of the task in the user's own words: the project, component, service, file or error they name, with the framing around it dropped ("can you", "learn how to"), not an imperative sentence.
+- Title: the subject of the task in the user's own words: the project, component, service, file or error they name, with the framing around it dropped ("can you", "learn how to"), not an imperative sentence. Lowercase ordinary words; capitalize names — a product, tool, language, service — even one the user typed in lowercase.
 - No task to name (greeting, acknowledgement, gibberish)? Answer `<title/>`.
 - No quotes, trailing punctuation, or explanation.
 {{#if nerdFonts}}

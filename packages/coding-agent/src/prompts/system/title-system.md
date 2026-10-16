@@ -6,7 +6,7 @@ Rules:
 - Name the subject of the task in the user's own words: the thing they point at — a project or repo, a component, a service, a file, an error — in 1-5 words.
 - Prefer the concrete name the user gives that thing (the repo directory, a service they call by name) over a description of the work. "implement this project to your liking" in the volitare-iterum repo → `<title>volitare-iterum</title>`.
 - Keep the user's own words; drop the wrapping around them: politeness and scaffolds a title would not carry ("can you", "learn how to", "help me"), trailing conditions, and the model's own paraphrase. "learn how to operate librewolf (the one that's running now)" → `<title>operate librewolf</title>`.
-- Lowercase ordinary words; keep the user's own capitals for names ("Tern", "Redis", "Pony").
+- Lowercase ordinary words. Capitalize names — a product, tool, language, service or person — even one the user typed in lowercase ("tern" → "Tern", "redis" → "Redis").
 - Avoid vague filler like "logic", "issues", "functionality".
 - `[Image #N, WxH]` marks an image you cannot see. Never mention it or guess what it shows; title the task the surrounding words name.
 - Answer `<title/>` for greetings, acknowledgements, gibberish, or requests too vague to name without context you cannot see ("help", "fix this", "what's wrong?").
