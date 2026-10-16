@@ -1,5 +1,61 @@
 # Open items — omp-custom
 
+## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
+
+A generated session title is the tab label in a TSP terminal: omp writes it to
+OSC 0 (`utils/title-generator.ts`, `buildNativeTerminalTitle`), and Tern's rail
+shows it. The prompts asked for a *"3-6 word imperative phrase"*, so the model
+wrapped the user's own words in its own verb — "learn how to operate librewolf"
+became `Learn to operate running LibreWolf`, "implement this project to your
+liking" became `Implement volitare-iterum project` — and the label ellipsized in
+the rail.
+
+- **Both title prompts now ask for a 1-5 word subject label in the user's own
+  words** — the concrete thing named (repo, component, service, file, error),
+  framing ("can you", "learn how to") and trailing conditions dropped, ordinary
+  words lowercase, and names capitalized even when the user typed them
+  lowercase. Changed: `prompts/system/title-system.md` (the tiny path and the
+  fork's override) and `prompts/system/title-fork.md` (the fork path, and the
+  default `title.generator`).
+- **On `custom` as `f1403ab55e` + `559aa975ba`**, built in
+  `~/.omp/wt/title-subject-663cab63e7` off `custom` and ff-merged into
+  `omp-custom`, then `bun run build` so the launcher's memoized binary carries
+  it. `bun test test/agent-session-title-fork.test.ts test/title-card.test.ts
+  test/slash-commands/rename.test.ts` is 78/78 and `bun run check:types` is
+  clean.
+- **Verified end-to-end** through the installed launcher, one fresh
+  `omp --no-tools` session per first message: "the retry queue drops jobs when
+  redis restarts, can u look" → `retry queue drops jobs on Redis restart`;
+  "can you let tern not reorder tern sessions? currently, when i focus on a
+  session, it moves to the top." → `Tern session reordering`. Both are subject
+  labels with no added verb. Print mode does **not** title — `omp -p` left the
+  slot empty — so a title check MUST drive a real interactive session.
+- **No PR.** The style is a personal choice (the user's own tabs); nothing is
+  pushed.
+- **Open:** the label is still the model's pick, so it reads like the target
+  list (`Tern no reorder sessions`, `operate Librewolf`) without always matching
+  it word-for-word. Nothing in the harness makes a user rename win over a later
+  auto-title beyond `source: "user"`; revisit only if the drift matters.
+
+## Tern tab names — set for the five sessions the user listed (2026-10-16)
+
+`tern rename <BLOCK> <NAME>` (Tern 0.9.0, the window's own daemon) sets a tab's
+user name, which the rail shows over the program's OSC 0 title. The live tab
+`Learn to operate running LibreWolf` was renamed to `operate Librewolf`
+(Default tab 1). The three sessions whose panes were gone from the window had
+their session title slot rewritten in place (256-byte first line, `source:
+"user"`): `-computing-play-volitare-iterum/2026-10-16T15-14-21-673Z_…jsonl` →
+`volitare-iterum`, `-tmp/2026-10-16T15-15-40-099Z_…jsonl` → `docs-server`,
+`-tmp/2026-10-16T15-18-26-535Z_…jsonl` → `Tern no reorder sessions`; the live
+`-tmp/2026-10-16T15-29-33-284Z_…jsonl` was patched to `operate Librewolf` too.
+`Set tern theme to kitty` already read that.
+
+- **A running session cannot be re-titled from outside.** Its tab label is its
+  own OSC 0 write, and the user's Tern window has no control endpoint
+  (`tern ctl` needs a window started with `--control`, and the session daemon
+  socket is a different protocol). The file patch is read on the session's next
+  start, not by the live process.
+
 ## Unauthenticated GitHub release fetch in `tools-manager.ts` — landed on `custom` (`7ee58e5f60`), PR [#15981](https://github.com/can1357/oh-my-pi/pull/15981) open upstream
 
 `getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) used to fetch
