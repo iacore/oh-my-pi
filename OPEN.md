@@ -1,5 +1,18 @@
 # Open items — omp-custom
 
+## Unauthenticated GitHub release fetch in `tools-manager.ts` — open, not fixed
+
+`getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) fetches
+`api.github.com/repos/<repo>/releases/latest` with only a `User-Agent` header. Unlike
+`fetchGitHubApi` (same directory tree, `web/scrapers/github.ts`) and `avatar.ts`, it never reads
+`GH_TOKEN`/`GITHUB_TOKEN`, so on an egress IP whose anonymous budget is spent (`403 API rate
+limit exceeded for 103.190.179.31`, 2026-10-16) a tool install dies with
+`GitHub API error: 403` — exporting a token does not reach it.
+
+Latent on this machine: `sd`, `sg`, `yt-dlp` and `trafilatura` all resolve through `$which`, so
+`getToolPath` returns before the download path runs and `~/.omp/tools` is absent. Decide whether
+to send the env token from this call site as the siblings do.
+
 ## Local `.codegraph/` ignore — landed on `custom` (`5f67ef1bfb`), upstreaming declined
 
 `.gitignore` now carries `.codegraph/` under `# Project specific`. It is a per-checkout index
