@@ -1,17 +1,26 @@
 # Open items — omp-custom
 
-## Unauthenticated GitHub release fetch in `tools-manager.ts` — open, not fixed
+## Unauthenticated GitHub release fetch in `tools-manager.ts` — landed on `custom` (`7ee58e5f60`), PR [#15981](https://github.com/can1357/oh-my-pi/pull/15981) open upstream
 
-`getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) fetches
-`api.github.com/repos/<repo>/releases/latest` with only a `User-Agent` header. Unlike
-`fetchGitHubApi` (same directory tree, `web/scrapers/github.ts`) and `avatar.ts`, it never reads
-`GH_TOKEN`/`GITHUB_TOKEN`, so on an egress IP whose anonymous budget is spent (`403 API rate
-limit exceeded for 103.190.179.31`, 2026-10-16) a tool install dies with
-`GitHub API error: 403` — exporting a token does not reach it.
+`getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) used to fetch
+`api.github.com/repos/<repo>/releases/latest` with only a `User-Agent` header, so on an egress IP
+whose anonymous budget was spent (`403 API rate limit exceeded for 103.190.179.31`, 2026-10-16) a
+tool install died with `GitHub API error: 403` — exporting a token did not reach it. It now sends
+`GITHUB_TOKEN`/`GH_TOKEN` as a bearer credential, the same fallback as
+`web/scrapers/github.ts` and `cli/git-tui/avatar.ts`.
 
-Latent on this machine: `sd`, `sg`, `yt-dlp` and `trafilatura` all resolve through `$which`, so
-`getToolPath` returns before the download path runs and `~/.omp/tools` is absent. Decide whether
-to send the env token from this call site as the siblings do.
+- **On `custom` as `7ee58e5f60`**, built in `~/.omp/wt/integrate-github-release-auth-5349784d1d`
+  off `custom` and ff-merged into `omp-custom` (the branch based on `origin/main` conflicted in
+  `packages/tui`, so it landed as a source+test integration commit). The changelog entry stays on
+  the PR branch per `skill://omp-change-and-install`, so `/changelog` does not list the fix until
+  the PR lands upstream.
+- **Verified on this machine**, whose egress had `remaining: 0` of 60: without a token
+  `getLatestVersion("chmln/sd")` threw `GitHub API error: 403`; with `GH_TOKEN` it resolved
+  `1.1.0`. `bun test test/tools-manager-download.test.ts` is 4/4, and the token case added there
+  fails with the token line removed. `bun run check:ts` clean on the PR branch.
+- **Not exercised through a real install here.** `sd`, `sg`, `yt-dlp` and `trafilatura` all
+  resolve through `$which`, so `getToolPath` returns before the download path runs; the fix was
+  checked by calling `getLatestVersion` directly.
 
 ## Local `.codegraph/` ignore — landed on `custom` (`5f67ef1bfb`), upstreaming declined
 
