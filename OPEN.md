@@ -1,5 +1,35 @@
 # Open items — omp-custom
 
+## `uptime` builtin reports a 2023 boot time when no BOOT_TIME record exists (2026-10-18)
+
+`uptime` in the embedded shell is `pi-builtins`' in-process builtin
+(`crates/pi-builtins/src/uptime.rs`, registered at `factory.rs:327-328`), so it
+shadows `/usr/bin/uptime`. `/var/run/utmp` on this box holds no BOOT_TIME
+record, and the builtin then takes gnulib's fallback — the **first** mtime in
+`BOOT_TOUCHED_FILES` (`uptime.rs:441-456`) that is ≥ `1_122_334_455`. Order is
+`/var/lib/systemd/random-seed`, `/var/lib/urandom/random-seed`,
+`/var/lib/random-seed`, `/var/run/utmp`; the first two do not exist here, and
+`/var/lib/random-seed` carries mtime `2023-09-25 05:02:32.688`, so it wins over
+the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`,
+`uptime -s` → `2023-09-25 05:02:32`; `/usr/bin/uptime` (procps-ng 4.0.7) →
+`up 30 min`; `/proc/uptime` / `CLOCK_BOOTTIME` → boot `02:25:29`.
+
+- **coreutils `who -b` lies the same way** — it uses gnulib's `readutmp`, so it
+  prints the same stale date from the same file. The stale file, not either
+  program, is the root cause; any box that does not run systemd can carry a
+  multi-year-old `/var/lib/random-seed`.
+- **No per-builtin switch.** `PI_DISABLE_UUTILS_BUILTINS=1`
+  (`crates/pi-shell/src/shell.rs:845`) is all-or-nothing for the whole uutils
+  set; `rm`/`mv`/`nohup` are the only individually gated ones. Dropping `uptime`
+  alone needs a code change (`factory.rs` registration, or the fallback order in
+  `uptime.rs`) plus a rebuild.
+- **`enable -n uptime` works in a shell** and hands `uptime` back to
+  `/usr/bin/uptime` for that session's shell only.
+- **Open:** decide between preferring `CLOCK_BOOTTIME` (or skipping the seed
+  files when `/run/systemd/system` is absent), dropping the builtin, and doing
+  nothing; the first is the only fix that also repairs gnulib-compatible readers
+  if upstreamed.
+
 ## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
 
 A generated session title is the tab label in a TSP terminal: omp writes it to
