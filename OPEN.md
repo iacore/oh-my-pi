@@ -1,5 +1,49 @@
 # Open items — omp-custom
 
+## `doas`/`sudo` bash calls get a terminal for their password prompt — landed on `custom` (`0303e0f488`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-18)
+
+`/usr/bin/doas` here is OpenDoas (`doas [-Lns]` — no `-A`/askpass, confirmed by
+its own usage line and by `strings`), and `/etc/doas.conf` grants a password
+prompt, so the password can only come from a controlling terminal: `doas` opens
+`/dev/tty` and never reads stdin. A bash call in omp's plain executor has no
+terminal, so it answered `doas: Authentication failed` (measured: 1.58 s)
+without ever prompting, and `echo hunter2 | doas true` failed the same way
+(2.30 s).
+
+- **A call whose command word is `doas` or `sudo` now runs on the same
+  interactive PTY an explicit `pty: true` call uses.** The detection is
+  `bashNeedsAuthTerminal` (`src/tools/bash-pty-selection.ts`, over the shared
+  `tokenizeShellSegments`; any command position, path-qualified words included),
+  wired through `ptyRequestedFor` (`src/tools/bash.ts`) into the PTY branch, the
+  virtual-cwd guard, the direnv preflight, the auto-background gate and the
+  tool's concurrency (`exclusive`). A call that already says it will not prompt
+  (`-n`/`--non-interactive`, `-A`/`--askpass`, `-S`/`--stdin`) is left to the
+  plain executor, an explicit `pty: false` wins, the ACP client terminal keeps
+  the call where the local UI is absent, and where neither terminal exists the
+  result carries a notice saying so. `src/prompts/tools/bash.md` now tells the
+  model `doas`/`sudo` get the terminal on their own.
+- **On `custom` as `0303e0f488`**, built in `~/.omp/wt/doas-pty-9dcdd6817e` off
+  `custom` and ff-merged into `omp-custom`; `packages/natives` is untouched, so
+  the launcher's memoized binary rebuilt on the next invocation. The PR branch
+  `fix/doas-auth-terminal` lives in `~/.omp/wt/doas-pty-upstream-470b7efb67`
+  (based on `origin/main` 470b7efb67, a clean cherry-pick); its changelog entry
+  stays on that branch per `skill://omp-change-and-install`.
+- **Verified**: unit cases for the detection in `test/tools/bash-pty-selection.test.ts`;
+  the new `test/tools/bash-auth-terminal.test.ts` drives the real PTY through the
+  tool and observes `doas (user@17) password:` (its second case checks the no-UI
+  notice); 87 pass across the six bash test files; `check:types`, oxlint and
+  oxfmt clean on both trees. End-to-end through the installed launcher on a
+  Python `pty.fork` driver (`~/.local/bin/omp "<run doas true>"` in
+  `/tmp/doas-smoke`): the session's terminal card reads
+  `force-kill · input forwarded to PTY` above `doas (user@17) password:`.
+- **The preference that goes with it** is in `~/.omp/agent/APPEND_SYSTEM.md`:
+  privileged execution is written as `doas <command>`, with no probe for `sudo`
+  and no fallback chain.
+- **Open:** PR #16103 awaits review. Two things not taken: a wrapper that hides
+  the command word (`env doas …`, `bash -c 'doas …'`) is not detected, and the
+  same one-word fix now exists twice — on `custom` and on the PR branch — so the
+  PR MUST land before the next upstream merge.
+
 ## `uptime` builtin reports a 2023 boot time when no BOOT_TIME record exists (2026-10-18)
 
 `uptime` in the embedded shell is `pi-builtins`' in-process builtin
