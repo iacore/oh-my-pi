@@ -25,10 +25,12 @@ the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`
   `uptime.rs`) plus a rebuild.
 - **`enable -n uptime` works in a shell** and hands `uptime` back to
   `/usr/bin/uptime` for that session's shell only.
-- **Open:** decide between preferring `CLOCK_BOOTTIME` (or skipping the seed
-  files when `/run/systemd/system` is absent), dropping the builtin, and doing
-  nothing; the first is the only fix that also repairs gnulib-compatible readers
-  if upstreamed.
+- **Decided 2026-10-18: left in place.** The user declined both dropping the
+  builtin and deleting the stale `/var/lib/random-seed`, so no fix is planned
+  and nothing was removed. Read the boot time from `/proc/uptime`,
+  `/usr/bin/uptime`, or `enable -n uptime` instead of the builtin. Fixing the
+  fallback order remains the only route that would also repair coreutils
+  `who -b`, if it is ever worth doing.
 
 ## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
 
