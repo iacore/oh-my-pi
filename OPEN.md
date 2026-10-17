@@ -25,9 +25,10 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
 - **On `custom` as `0303e0f488`**, built in `~/.omp/wt/doas-pty-9dcdd6817e` off
   `custom` and ff-merged into `omp-custom`; `packages/natives` is untouched, so
   the launcher's memoized binary rebuilt on the next invocation. The PR branch
-  `fix/doas-auth-terminal` lives in `~/.omp/wt/doas-pty-upstream-470b7efb67`
-  (based on `origin/main` 470b7efb67, a clean cherry-pick); its changelog entry
-  stays on that branch per `skill://omp-change-and-install`.
+  `fix/doas-auth-terminal` lives in `~/.omp/wt/doas-pty-upstream-470b7efb67`, a
+  clean cherry-pick rebased onto `origin/main` `df4f996e66` (the first fetch had
+  left it on `470b7efb67`, which made GitHub report the PR `CONFLICTING`); its
+  changelog entry stays on that branch per `skill://omp-change-and-install`.
 - **Verified**: unit cases for the detection in `test/tools/bash-pty-selection.test.ts`;
   the new `test/tools/bash-auth-terminal.test.ts` drives the real PTY through the
   tool and observes `doas (user@17) password:` (its second case checks the no-UI
