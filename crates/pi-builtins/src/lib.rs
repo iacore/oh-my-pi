@@ -136,8 +136,7 @@ mod quoting_style;
 	feature = "util.date",
 	feature = "util.du",
 	feature = "util.ls",
-	feature = "util.touch",
-	feature = "util.uptime"
+	feature = "util.touch"
 ))]
 mod time_zone;
 #[cfg(any(feature = "util.cp", feature = "util.mv"))]
@@ -310,8 +309,6 @@ mod ts;
 mod uname;
 #[cfg(feature = "util.uniq")]
 mod uniq;
-#[cfg(feature = "util.uptime")]
-mod uptime;
 #[cfg(feature = "util.wc")]
 mod wc;
 #[cfg(feature = "util.which")]

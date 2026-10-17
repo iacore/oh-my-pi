@@ -385,7 +385,6 @@ base = [
 "util.truncate" = []
 "util.uname" = []
 "util.uniq" = []
-"util.uptime" = []
 "util.wc" = []
 "util.which" = []
 "util.whoami" = []
@@ -469,7 +468,6 @@ utils = [
   "util.truncate",
   "util.uname",
   "util.uniq",
-  "util.uptime",
   "util.wc",
   "util.which",
   "util.whoami",

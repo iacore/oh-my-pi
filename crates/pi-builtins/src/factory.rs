@@ -324,8 +324,6 @@ pub fn utility_builtins<SE: brush_core::ShellExtensions>()
 	m.push(("uname", uname::uname_builtin::<SE>()));
 	#[cfg(feature = "util.uniq")]
 	m.push(("uniq", uniq::uniq_builtin::<SE>()));
-	#[cfg(feature = "util.uptime")]
-	m.push(("uptime", uptime::uptime_builtin::<SE>()));
 	#[cfg(feature = "util.wc")]
 	m.push(("wc", wc::wc_builtin::<SE>()));
 	#[cfg(feature = "util.which")]

@@ -4668,7 +4668,6 @@ mod tests {
 			"ts",
 			"uname",
 			"uniq",
-			"uptime",
 			"wc",
 			"which",
 			"whoami",

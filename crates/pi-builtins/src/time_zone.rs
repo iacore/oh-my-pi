@@ -10,8 +10,7 @@ use crate::host::Host;
 /// UTC.
 ///
 /// Read from the shell environment, never the host process's, so `TZ=… date`
-/// works at the prompt. Shared by `date`, `ls`, `touch`, `du --time`, and
-/// `uptime`.
+/// works at the prompt. Shared by `date`, `ls`, `touch`, and `du --time`.
 pub(crate) fn shell_time_zone(host: &Host) -> TimeZone {
 	let Some(value) = host.var("TZ") else {
 		return TimeZone::system();
