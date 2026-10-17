@@ -1,5 +1,6 @@
 # Open items — omp-custom
 
+<!-- item: doas-sudo-bash-calls-get state=blocked owner=- blocked=upstream -->
 ## `doas`/`sudo` bash calls get a terminal for their password prompt — landed on `custom` (`0303e0f488`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-18)
 
 `/usr/bin/doas` here is OpenDoas (`doas [-Lns]` — no `-A`/askpass, confirmed by
@@ -45,6 +46,7 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
   same one-word fix now exists twice — on `custom` and on the PR branch — so the
   PR MUST land before the next upstream merge.
 
+<!-- item: in-process-uptime-builtin-is state=done owner=- blocked=- -->
 ## The in-process `uptime` builtin is gone from the shell — landed on `custom` (`09210499e7`), not upstreamed (2026-10-18)
 
 `uptime` in the embedded shell **was** `pi-builtins`' in-process builtin
@@ -87,6 +89,7 @@ the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`
   `/var/lib/random-seed` was declined and stays undone, so coreutils `who -b`
   still prints 2023.
 
+<!-- item: session-titles-landed-on-custom state=done owner=- blocked=- -->
 ## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
 
 A generated session title is the tab label in a TSP terminal: omp writes it to
@@ -137,12 +140,14 @@ their session title slot rewritten in place (256-byte first line, `source:
 `-tmp/2026-10-16T15-29-33-284Z_…jsonl` was patched to `operate Librewolf` too.
 `Set tern theme to kitty` already read that.
 
+<!-- item: running-session-cannot-be-re state=open owner=- blocked=- -->
 - **A running session cannot be re-titled from outside.** Its tab label is its
   own OSC 0 write, and the user's Tern window has no control endpoint
   (`tern ctl` needs a window started with `--control`, and the session daemon
   socket is a different protocol). The file patch is read on the session's next
   start, not by the live process.
 
+<!-- item: unauthenticated-github-release-fetch-in state=blocked owner=- blocked=upstream -->
 ## Unauthenticated GitHub release fetch in `tools-manager.ts` — landed on `custom` (`7ee58e5f60`), PR [#15981](https://github.com/can1357/oh-my-pi/pull/15981) open upstream
 
 `getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) used to fetch
@@ -165,6 +170,7 @@ tool install died with `GitHub API error: 403` — exporting a token did not rea
   resolve through `$which`, so `getToolPath` returns before the download path runs; the fix was
   checked by calling `getLatestVersion` directly.
 
+<!-- item: local-codegraph-ignore-landed-on state=done owner=- blocked=- -->
 ## Local `.codegraph/` ignore — landed on `custom` (`5f67ef1bfb`), upstreaming declined
 
 `.gitignore` now carries `.codegraph/` under `# Project specific`. It is a per-checkout index
@@ -174,6 +180,7 @@ it never forced a rebuild — it only cluttered `git status`.
 - **Not upstreamed, deliberately.** Upstream carries the same `codegraph` integration, but the
   entry stays on `custom`; do not propose it again.
 
+<!-- item: session-pin-palette-wording-on state=blocked owner=- blocked=upstream -->
 ## `/session pin` palette wording — on `custom` (`a060de43da`), PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open upstream
 
 The row read *Pin the current provider to a stored OAuth account*: the provider as the pinned
@@ -198,6 +205,7 @@ and the command's own text listing phrase it. The string is unchanged since the 
   merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
   intact at 80 columns where the old 48-character string ellipsized.
 
+<!-- item: rows-with-no-cells-inside state=blocked owner=- blocked=upstream -->
 ## Rows with no cells inside a streamed table — band fixed on `custom` (`971cc3e7c4`), PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499) open upstream
 
 A reply whose body is a wide GFM table (`#renderTable`, `packages/tui/src/components/markdown.ts`)
@@ -257,6 +265,7 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   suite is 13/13. The field hole's *history* variant was never reproduced in the harness, so if it
   recurs after this fix, capture the bytes before touching the retire/commit path.
 
+<!-- item: mid-stream-scrollback-publication-off state=open owner=- blocked=- -->
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
 `createAssistantMessageComponent` (`packages/tui/src/prompt/interactive-context-helpers.ts`)
@@ -279,6 +288,7 @@ retracted, and no VT100/ECMA-48 sequence addresses lines that already scrolled i
 - **No config key.** The flag is wired in code, so flipping it back needs a source edit and a
   rebuild; decide whether it earns a setting.
 
+<!-- item: compiled-launcher-started-in-omp state=done owner=- blocked=- -->
 ## Compiled launcher started in `~/.omp/.dev-cwd` — fixed on `custom` (`3053707ab9`)
 
 `packages/coding-agent/scripts/omp` (local commit `4c843c0d0c`) `cd`s into
@@ -308,6 +318,7 @@ directory still resolves `.` there through the shim.
   while the compiled path was in use stay where they are; nothing is migrated. Decide
   whether they should be moved into the real project directories.
 
+<!-- item: upstream-merge-landed-on-custom state=blocked owner=- blocked=upstream -->
 ## Upstream merge — landed on `custom` (`d741066820`), 2026-10-12
 
 `Merge origin/main into custom (2681 commits)` took the tree from upstream
@@ -331,6 +342,7 @@ suites are green on the merged tree.
   npm and HTML-export builds, `SYSTEM.md` discovery ordering).
 - **`bun.lock` took upstream's side** and was re-resolved with `bun install`.
 
+<!-- item: process-niceness-for-spawned-tools state=done owner=- blocked=- -->
 ## Process niceness for spawned tools — landed on `custom` (`1a753eb8b8`)
 
 `process.nice` lowers the scheduling priority of omp and every process it spawns, so
@@ -355,6 +367,7 @@ settings load); `~/.omp/agent/config.yml` sets `process.nice: 19`.
   per-*thread*, so the applier walks `/proc/self/task`; children inherit the forking
   thread's niceness. Skipped under `isBunTestRuntime()` so the suite is never reniced.
 
+<!-- item: auto-learn-session-settle-scribe state=done owner=- blocked=- -->
 ## Auto-Learn session-settle scribe — landed on `custom` (`ebde23a70d`), not upstreamed
 
 `feat(autolearn): ran a small-model scribe when a session settles`, built in
@@ -394,6 +407,7 @@ fast-forwarded into `custom`; the launcher rebuilt `dist/omp` on first use.
   record durable facts. Whether `learn` should gain a sharpshooter branch is an
   open decision.
 
+<!-- item: interrupt-before-output-returns-the state=done owner=- blocked=- -->
 ## Interrupt before output returns the prompt to the editor — landed on `custom` (`adf9758c9e`), not upstreamed
 
 `fix(prompt): returned an interrupted empty turn's prompt to the editor`, built in
