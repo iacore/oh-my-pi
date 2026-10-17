@@ -10,7 +10,7 @@ terminal, so it answered `doas: Authentication failed` (measured: 1.58 s)
 without ever prompting, and `echo hunter2 | doas true` failed the same way
 (2.30 s).
 
-- **A call whose command word is `doas` or `sudo` now runs on the same
+- [ ] call-whose-command-word · open · owner:- · blocked:- · **A call whose command word is `doas` or `sudo` now runs on the same
   interactive PTY an explicit `pty: true` call uses.** The detection is
   `bashNeedsAuthTerminal` (`src/tools/bash-pty-selection.ts`, over the shared
   `tokenizeShellSegments`; any command position, path-qualified words included),
@@ -22,14 +22,14 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
   the call where the local UI is absent, and where neither terminal exists the
   result carries a notice saying so. `src/prompts/tools/bash.md` now tells the
   model `doas`/`sudo` get the terminal on their own.
-- **On `custom` as `0303e0f488`**, built in `~/.omp/wt/doas-pty-9dcdd6817e` off
+- [ ] custom-as-0303e0f488 · open · owner:- · blocked:- · **On `custom` as `0303e0f488`**, built in `~/.omp/wt/doas-pty-9dcdd6817e` off
   `custom` and ff-merged into `omp-custom`; `packages/natives` is untouched, so
   the launcher's memoized binary rebuilt on the next invocation. The PR branch
   `fix/doas-auth-terminal` lives in `~/.omp/wt/doas-pty-upstream-470b7efb67`, a
   clean cherry-pick rebased onto `origin/main` `df4f996e66` (the first fetch had
   left it on `470b7efb67`, which made GitHub report the PR `CONFLICTING`); its
   changelog entry stays on that branch per `skill://omp-change-and-install`.
-- **Verified**: unit cases for the detection in `test/tools/bash-pty-selection.test.ts`;
+- [x] verified · done · owner:- · blocked:- · **Verified**: unit cases for the detection in `test/tools/bash-pty-selection.test.ts`;
   the new `test/tools/bash-auth-terminal.test.ts` drives the real PTY through the
   tool and observes `doas (user@17) password:` (its second case checks the no-UI
   notice); 87 pass across the six bash test files; `check:types`, oxlint and
@@ -37,10 +37,10 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
   Python `pty.fork` driver (`~/.local/bin/omp "<run doas true>"` in
   `/tmp/doas-smoke`): the session's terminal card reads
   `force-kill · input forwarded to PTY` above `doas (user@17) password:`.
-- **The preference that goes with it** is in `~/.omp/agent/APPEND_SYSTEM.md`:
+- [ ] preference-that-goes-with · open · owner:- · blocked:- · **The preference that goes with it** is in `~/.omp/agent/APPEND_SYSTEM.md`:
   privileged execution is written as `doas <command>`, with no probe for `sudo`
   and no fallback chain.
-- **Open:** PR #16103 awaits review. Two things not taken: a wrapper that hides
+- [ ] open · open · owner:- · blocked:- · **Open:** PR #16103 awaits review. Two things not taken: a wrapper that hides
   the command word (`env doas …`, `bash -c 'doas …'`) is not detected, and the
   same one-word fix now exists twice — on `custom` and on the PR branch — so the
   PR MUST land before the next upstream merge.
@@ -59,25 +59,25 @@ the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`
 `uptime -s` → `2023-09-25 05:02:32`; `/usr/bin/uptime` (procps-ng 4.0.7) →
 `up 30 min`; `/proc/uptime` / `CLOCK_BOOTTIME` → boot `02:25:29`.
 
-- **coreutils `who -b` lies the same way** — it uses gnulib's `readutmp`, so it
+- [ ] coreutils-who-b-lies · open · owner:- · blocked:- · **coreutils `who -b` lies the same way** — it uses gnulib's `readutmp`, so it
   prints the same stale date from the same file. The stale file, not either
   program, is the root cause; any box that does not run systemd can carry a
   multi-year-old `/var/lib/random-seed`.
-- **No per-builtin switch.** `PI_DISABLE_UUTILS_BUILTINS=1`
+- [ ] no-per-builtin-switch · open · owner:- · blocked:- · **No per-builtin switch.** `PI_DISABLE_UUTILS_BUILTINS=1`
   (`crates/pi-shell/src/shell.rs:845`) is all-or-nothing for the whole uutils
   set; `rm`/`mv`/`nohup` are the only individually gated ones. Dropping `uptime`
   alone needs a code change (`factory.rs` registration, or the fallback order in
   `uptime.rs`) plus a rebuild.
-- **`enable -n uptime` works in a shell** and hands `uptime` back to
+- [ ] enable-n-uptime-works · open · owner:- · blocked:- · **`enable -n uptime` works in a shell** and hands `uptime` back to
   `/usr/bin/uptime` for that session's shell only.
-- **Landed `09210499e7`** — "dropped the in-process uptime builtin". The
+- [x] landed-09210499e7 · done · owner:- · blocked:- · **Landed `09210499e7`** — "dropped the in-process uptime builtin". The
   builtin, its `util.uptime` feature, its module, its arm in the `time_zone`
   gate, and its name in the registry test's expected list
   (`crates/pi-shell/src/shell.rs`) are gone, so the name resolves to the system
   binary. Built in `~/.omp/wt/drop-uptime-builtin-7914a308b5` off `custom`,
   rebased onto the two `docs(open)` commits that landed meanwhile, and
   fast-forwarded into `omp-custom`.
-- **Verified**: `cargo nextest run -p pi-builtins -p pi-shell` → 2252 tests,
+- [x] verified-2 · done · owner:- · blocked:- · **Verified**: `cargo nextest run -p pi-builtins -p pi-shell` → 2252 tests,
   2251 passed, 1 skipped, and one failure —
   `df::tests::total_row_names_target_dash_when_source_is_shown`, a column-width
   assertion that fails the same way on unmodified `custom` (environment
@@ -104,22 +104,22 @@ the rail.
   lowercase. Changed: `prompts/system/title-system.md` (the tiny path and the
   fork's override) and `prompts/system/title-fork.md` (the fork path, and the
   default `title.generator`).
-- **On `custom` as `f1403ab55e` + `559aa975ba`**, built in
+- [ ] custom-as-f1403ab55e-559aa975ba · open · owner:- · blocked:- · **On `custom` as `f1403ab55e` + `559aa975ba`**, built in
   `~/.omp/wt/title-subject-663cab63e7` off `custom` and ff-merged into
   `omp-custom`, then `bun run build` so the launcher's memoized binary carries
   it. `bun test test/agent-session-title-fork.test.ts test/title-card.test.ts
   test/slash-commands/rename.test.ts` is 78/78 and `bun run check:types` is
   clean.
-- **Verified end-to-end** through the installed launcher, one fresh
+- [x] verified-end-to-end · done · owner:- · blocked:- · **Verified end-to-end** through the installed launcher, one fresh
   `omp --no-tools` session per first message: "the retry queue drops jobs when
   redis restarts, can u look" → `retry queue drops jobs on Redis restart`;
   "can you let tern not reorder tern sessions? currently, when i focus on a
   session, it moves to the top." → `Tern session reordering`. Both are subject
   labels with no added verb. Print mode does **not** title — `omp -p` left the
   slot empty — so a title check MUST drive a real interactive session.
-- **No PR.** The style is a personal choice (the user's own tabs); nothing is
+- [ ] no-pr · blocked · owner:- · blocked:upstream · **No PR.** The style is a personal choice (the user's own tabs); nothing is
   pushed.
-- **Open:** the label is still the model's pick, so it reads like the target
+- [ ] open-2 · open · owner:- · blocked:- · **Open:** the label is still the model's pick, so it reads like the target
   list (`Tern no reorder sessions`, `operate Librewolf`) without always matching
   it word-for-word. Nothing in the harness makes a user rename win over a later
   auto-title beyond `source: "user"`; revisit only if the drift matters.
@@ -137,7 +137,7 @@ their session title slot rewritten in place (256-byte first line, `source:
 `-tmp/2026-10-16T15-29-33-284Z_…jsonl` was patched to `operate Librewolf` too.
 `Set tern theme to kitty` already read that.
 
-- **A running session cannot be re-titled from outside.** Its tab label is its
+- [ ] running-session-cannot-be · open · owner:- · blocked:- · **A running session cannot be re-titled from outside.** Its tab label is its
   own OSC 0 write, and the user's Tern window has no control endpoint
   (`tern ctl` needs a window started with `--control`, and the session daemon
   socket is a different protocol). The file patch is read on the session's next
@@ -152,16 +152,16 @@ tool install died with `GitHub API error: 403` — exporting a token did not rea
 `GITHUB_TOKEN`/`GH_TOKEN` as a bearer credential, the same fallback as
 `web/scrapers/github.ts` and `cli/git-tui/avatar.ts`.
 
-- **On `custom` as `7ee58e5f60`**, built in `~/.omp/wt/integrate-github-release-auth-5349784d1d`
+- [ ] custom-as-7ee58e5f60 · open · owner:- · blocked:- · **On `custom` as `7ee58e5f60`**, built in `~/.omp/wt/integrate-github-release-auth-5349784d1d`
   off `custom` and ff-merged into `omp-custom` (the branch based on `origin/main` conflicted in
   `packages/tui`, so it landed as a source+test integration commit). The changelog entry stays on
   the PR branch per `skill://omp-change-and-install`, so `/changelog` does not list the fix until
   the PR lands upstream.
-- **Verified on this machine**, whose egress had `remaining: 0` of 60: without a token
+- [x] verified-on-this-machine · done · owner:- · blocked:- · **Verified on this machine**, whose egress had `remaining: 0` of 60: without a token
   `getLatestVersion("chmln/sd")` threw `GitHub API error: 403`; with `GH_TOKEN` it resolved
   `1.1.0`. `bun test test/tools-manager-download.test.ts` is 4/4, and the token case added there
   fails with the token line removed. `bun run check:ts` clean on the PR branch.
-- **Not exercised through a real install here.** `sd`, `sg`, `yt-dlp` and `trafilatura` all
+- [ ] not-exercised-through-a · open · owner:- · blocked:- · **Not exercised through a real install here.** `sd`, `sg`, `yt-dlp` and `trafilatura` all
   resolve through `$which`, so `getToolPath` returns before the download path runs; the fix was
   checked by calling `getLatestVersion` directly.
 
@@ -171,7 +171,7 @@ tool install died with `GitHub API error: 403` — exporting a token did not rea
 (`codegraph init`), and the launcher's generation fingerprint already ignored untracked files, so
 it never forced a rebuild — it only cluttered `git status`.
 
-- **Not upstreamed, deliberately.** Upstream carries the same `codegraph` integration, but the
+- [ ] not-upstreamed-deliberately · open · owner:- · blocked:- · **Not upstreamed, deliberately.** Upstream carries the same `codegraph` integration, but the
   entry stays on `custom`; do not propose it again.
 
 ## `/session pin` palette wording — on `custom` (`a060de43da`), PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open upstream
@@ -184,17 +184,17 @@ session's credential for the current provider, which is also how `packages/ai/sr
 and the command's own text listing phrase it. The string is unchanged since the feature landed in
 `af9e8546a9`, so this is not a regression.
 
-- **On `custom` as `a060de43da`.** The PR branch is based on `origin/main`, so merging it here
+- [ ] custom-as-a060de43da · open · owner:- · blocked:- · **On `custom` as `a060de43da`.** The PR branch is based on `origin/main`, so merging it here
   would have dragged the whole upstream drift custom has not taken — the attempt staged
   `Cargo.lock`, `MODULE.bazel.lock` and `crates/…` against a tree 5026 commits behind. Landed
   instead as a source-only integration commit built in
   `~/.omp/wt/integrate-pin-help-5f67ef1bfb` and ff-merged into `omp-custom`. The changelog entry
   stays on the PR branch (`skill://omp-change-and-install`), so Tern's `/changelog` does not list
   the fix until the PR lands upstream.
-- **Upstream PR still open.** Branch `fix/session-pin-help` (`91a926fc08`, worktree
+- [ ] upstream-pr-still-open · blocked · owner:- · blocked:upstream · **Upstream PR still open.** Branch `fix/session-pin-help` (`91a926fc08`, worktree
   `~/.omp/wt/session-pin-help-c8913466dd`) is pushed to `g`; when it lands, its entry arrives with
   `origin/main` and nothing else is left to carry.
-- Verified on the installed launcher (`~/.local/bin/omp` → this checkout, so it rebuilt after the
+- [x] verified-on-the-installed · done · owner:- · blocked:- · Verified on the installed launcher (`~/.local/bin/omp` → this checkout, so it rebuilt after the
   merge): `/session ` then the `pin` row reads `Pin a stored OAuth account for this session`,
   intact at 80 columns where the old 48-character string ellipsized.
 
@@ -205,16 +205,16 @@ left four rows holding **no cells at all** inside one table row of the terminal'
 row's wrapped lines 1–2, then four empty rows, then line 3 (the row's remaining text). Seen with the
 installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp`) at 107 columns.
 
-- **Not a table-render defect.** `new Markdown(doc, 0, 0, getMarkdownTheme()).render(107)` over that
+- [ ] not-a-table-render · open · owner:- · blocked:- · **Not a table-render defect.** `new Markdown(doc, 0, 0, getMarkdownTheme()).render(107)` over that
   message's exact table (read back from the session JSONL) reproduces the column widths 13/19/72 and
   every line break present in the scrollback, with zero blank rows in the whole table.
-- **Not a cell-highlighting rule.** A selection paints rows that hold cells — default-background
+- [ ] not-a-cell-highlighting · open · owner:- · blocked:- · **Not a cell-highlighting rule.** A selection paints rows that hold cells — default-background
   space cells included — and skips rows that hold none (measured on kitty 0.48.2 with this config's
   font: spaces highlighted, bare `CRLF` and `EL` rows not). So those four rows reached the terminal
   with no cells; that is how a blank row is written by construction, since `#lineRewriteSequence` +
   `#terminalLine` (`packages/tui/src/tui.ts`) emit a blank line reset-only and the `blankRow` path
   skips the erase ("re-erasing every row only adds terminal parser work").
-- **Searched for in ~55 runs and not found.** Streaming that table through the real components on a
+- [ ] searched-for-in-55 · open · owner:- · blocked:- · **Searched for in ~55 runs and not found.** Streaming that table through the real components on a
   `VirtualTerminal` (kitty-vt-wasm) left no blank row inside the table and no repeated row in native
   history across: geometry 107x{24,30,40,50} and 100x{40,50} with 0/10/20/40 settled rows above;
   chunk 4/12/24/60/400 characters; a frame per chunk and one per 2/3/5/7 chunks; the working loader
@@ -222,10 +222,10 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   50→30 and 50→70, before, during and after the stream; the loader growing or shrinking around each
   resize; a destructive `resetDisplay()` mid-stream and after finalize; the user scrolling back
   10/25 rows mid-stream, after finalize, and across a resize; `setMidStreamPublication` both ways.
-- **Not a kitty reflow loss either.** 200 full-width table rows printed into kitty 0.48.2, then the
+- [ ] not-a-kitty-reflow · open · owner:- · blocked:- · **Not a kitty reflow loss either.** 200 full-width table rows printed into kitty 0.48.2, then the
   window narrowed 1000→700 px, the font 12→11→12, and the window widened back: `get-text --extent=all`
   returned all 200 rows once, in order, with no gap.
-- **A band of the same shape reproduces — in the viewport, not in history.** A block above the live
+- [ ] band-of-the-same · open · owner:- · blocked:- · **A band of the same shape reproduces — in the viewport, not in history.** A block above the live
   tail collapsing (10 settled rows, a 25-row card, 2 loader rows, 107x50, card 25→1 at 70 % of the
   stream) leaves a deterministic run of blank rows at the top of the live area — 7 of them at
   viewport rows 0–6 with the answer below — inserted by `topPadding` in `renderFrame`
@@ -235,10 +235,10 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   frame with slack never scrolls, and the slack is consumed by the next growth instead of being
   pushed into history. Swept for anyway across 4 heights × 3 settled widths × 2 card sizes × 4
   collapse points with a 90-row tail forcing everything into history: 0 blank rows inside a table.
-- **A committed prefix of a shrunken block does strand rows.** The same run leaves the collapsed
+- [ ] committed-prefix-of-a · open · owner:- · blocked:- · **A committed prefix of a shrunken block does strand rows.** The same run leaves the collapsed
   card's pre-collapse rows (`Tool output row 0…11`) standing in native history above the collapsed
   remainder — history keeps the old shape, which is the "cannot be retracted" trade, not the hole.
-- **Still unexcluded.** The field hole needs a scroll that pushes *something* blank into native
+- [ ] still-unexcluded · open · owner:- · blocked:- · **Still unexcluded.** The field hole needs a scroll that pushes *something* blank into native
   history while the seam sits inside a table. Remaining suspects: the chrome-into-history leak
   (`tui.ts:4231`, upstream #9783; "live chrome" is blank rows, and the field report counts 4–15 of
   them), the erase-then-scroll seam in the non-diffable paint (`#eraseBelowRow`), and a commit-prefix
@@ -247,7 +247,7 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   hit the toggle (`setHideThinkingBlock` / tool-output expansion) while a table streams, and look for
   a bare `\n\r\n` (a row with no cells) inside a run of `│` rows.
 
-- **Landed as `971cc3e7c4` (PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499)).** The band
+- [x] landed-as-971cc3e7c4-pr · done · owner:- · blocked:- · **Landed as `971cc3e7c4` (PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499)).** The band
   was the composer's top padding after all: a frame that shrank over committed history padded the
   live area's top, so a collapsing block punched cell-less rows into the live tail, and a selection
   could not paint them. The slack now falls below the live rows, which keeps the transcript
@@ -265,18 +265,18 @@ now passes `setMidStreamPublication(false)` for every wire instead of only the o
 leave its published rows standing above the replacement: native scrollback cannot be
 retracted, and no VT100/ECMA-48 sequence addresses lines that already scrolled into history.
 
-- **Not upstreamed.** No PR and no branch off `origin/main`; `custom` MUST NOT carry a
+- [ ] not-upstreamed · open · owner:- · blocked:- · **Not upstreamed.** No PR and no branch off `origin/main`; `custom` MUST NOT carry a
   changelog entry (per `skill://omp-change-and-install`).
-- **Cost.** Upstream's #11276 fix is traded away — a reply taller than the window clips its own
+- [ ] cost · open · owner:- · blocked:- · **Cost.** Upstream's #11276 fix is traded away — a reply taller than the window clips its own
   beginning while it streams, which lasts only until the turn ends.
-- **Only the publication is gated.** The machinery it drives (`#publishStableSnapshot`, the
+- [ ] only-the-publication-is · open · owner:- · blocked:- · **Only the publication is gated.** The machinery it drives (`#publishStableSnapshot`, the
   stable snapshots, the container's append-head emission) stays in the tree but is never
   enabled, so the next upstream merge does not conflict on it. Decide whether the fork should
   delete it instead.
-- **Pressure retirement still runs mid-turn** for settled blocks (finished tool cards, earlier
+- [ ] pressure-retirement-still-runs · open · owner:- · blocked:- · **Pressure retirement still runs mid-turn** for settled blocks (finished tool cards, earlier
   turns) when the viewport overflows. That is ordinary scrolling rather than early
   publication, and a rewrite of a settled turn still cannot retract its rows.
-- **No config key.** The flag is wired in code, so flipping it back needs a source edit and a
+- [ ] no-config-key · open · owner:- · blocked:- · **No config key.** The flag is wired in code, so flipping it back needs a source edit and a
   rebuild; decide whether it earns a setting.
 
 ## Compiled launcher started in `~/.omp/.dev-cwd` — fixed on `custom` (`3053707ab9`)
@@ -297,14 +297,14 @@ path keeps the caller's cwd. Verified after: `omp read .` from a fresh
 `/tmp/omp-cwd-probe3` lists `only-here.txt`, and `OMP_LAUNCH_MODE=ts` from the same
 directory still resolves `.` there through the shim.
 
-- **Committed locally, not upstreamed.** Landed as `3053707ab9` together with the
+- [ ] committed-locally-not-upstreamed · open · owner:- · blocked:- · **Committed locally, not upstreamed.** Landed as `3053707ab9` together with the
   launcher's untracked-file fingerprint change (`--untracked-files=no`, so a
   `.codegraph/` index no longer forces a rebuild) and `bun setup`'s removal of the
   `bun --cwd=packages/coding-agent link` step plus the `OMP_BIN_DIR`-aware Windows
   linker. The launcher sees a moved generation on the next `omp` invocation and rebuilds
   `dist/omp`. Decide whether this goes upstream; `custom` MUST NOT carry a changelog
   entry (per `skill://omp-change-and-install`).
-- **Stale project state.** Sessions and `.omp/ssh.json` written under `~/.omp/.dev-cwd`
+- [ ] stale-project-state · open · owner:- · blocked:- · **Stale project state.** Sessions and `.omp/ssh.json` written under `~/.omp/.dev-cwd`
   while the compiled path was in use stay where they are; nothing is migrated. Decide
   whether they should be moved into the real project directories.
 
@@ -317,19 +317,19 @@ changed, so `bun run setup` rebuilt the native addon (18.10.1) and relinked
 `~/.local/bin/omp`. `bun run check:ts` clean; the catalog, tui, and mnemopi
 suites are green on the merged tree.
 
-- **TUI streaming retirement now follows upstream's refined append path**:
+- [ ] tui-streaming-retirement-now · blocked · owner:- · blocked:upstream · **TUI streaming retirement now follows upstream's refined append path**:
   overflow-sized emission, and a stable prefix reaching onto the screen waits.
   Custom's uncapped emission (`c2baf3c5df`) and the test that pinned it were
   dropped — it was the cruder form of the same feature and opened a blank band
   once the working loader shrank (`composer-inline-shrink`). The trade kept: the
   live area may hold an on-screen stable prefix, which is the cost of never
   stranding a row above the live tail.
-- **Pre-existing failures on this box**, not merge regressions — the same files
+- [ ] pre-existing-failures-on · open · owner:- · blocked:- · **Pre-existing failures on this box**, not merge regressions — the same files
   fail on `custom` at `adf9758c9e`: `stats/test/fork-dedup` (1),
   `task/worktree` (2), `task/parked-subagent-session-release` (2), plus
   in-suite-only failures caused by missing externals (browser/Chrome, Electron,
   npm and HTML-export builds, `SYSTEM.md` discovery ordering).
-- **`bun.lock` took upstream's side** and was re-resolved with `bun install`.
+- [ ] bun-lock-took-upstream · blocked · owner:- · blocked:upstream · **`bun.lock` took upstream's side** and was re-resolved with `bun install`.
 
 ## Process niceness for spawned tools — landed on `custom` (`1a753eb8b8`)
 
@@ -339,18 +339,18 @@ the desktop. Applied once at startup in `runRootCommand`
 (`packages/coding-agent/src/exec/process-priority.ts`, called from `main.ts` after
 settings load); `~/.omp/agent/config.yml` sets `process.nice: 19`.
 
-- **Not upstreamed.** No PR, no branch. `custom` MUST NOT carry a changelog entry (per
+- [ ] not-upstreamed-2 · open · owner:- · blocked:- · **Not upstreamed.** No PR, no branch. `custom` MUST NOT carry a changelog entry (per
   `skill://omp-change-and-install`).
-- **cgroup is not available here.** No systemd (`command not found: systemctl`);
+- [ ] cgroup-is-not-available · open · owner:- · blocked:- · **cgroup is not available here.** No systemd (`command not found: systemctl`);
   `/sys/fs/cgroup` is root-only, the session cgroup `/sys/fs/cgroup/1` is neither
   writable nor subdividable, `/sys/fs/cgroup/omp` is root-owned and empty, and
   `systemd-run`/`cgcreate`/`cgexec` are absent; `doas` requires a password. An
   unprivileged omp therefore cannot use cgroups — niceness is the available
   equivalent. A delegated cgroup would need a one-time root setup plus a boot hook
   (dinit) to survive reboot.
-- **Only the `launch` path applies it.** `omp shell`, `omp config`, and the launcher's
+- [ ] only-the-launch-path · open · owner:- · blocked:- · **Only the `launch` path applies it.** `omp shell`, `omp config`, and the launcher's
   own `bun run build` still run at the default priority. Decide whether they need it.
-- **Startup window.** Applied after settings load (~1 s in), so threads created before
+- [ ] startup-window · open · owner:- · blocked:- · **Startup window.** Applied after settings load (~1 s in), so threads created before
   then briefly keep nice 0; no heavy child spawns that early. Linux niceness is
   per-*thread*, so the applier walks `/proc/self/task`; children inherit the forking
   thread's niceness. Skipped under `isBunTestRuntime()` so the suite is never reniced.
@@ -361,7 +361,7 @@ settings load); `~/.omp/agent/config.yml` sets `process.nice: 19`.
 `~/.omp/wt/autolearn-scribe-5be06592e9` on branch `autolearn/scribe` and
 fast-forwarded into `custom`; the launcher rebuilt `dist/omp` on first use.
 
-- **PR opened: https://github.com/can1357/oh-my-pi/pull/15460** — 1 commit
+- [ ] pr-opened-https-github · blocked · owner:- · blocked:upstream · **PR opened: https://github.com/can1357/oh-my-pi/pull/15460** — 1 commit
   (`47b0ca529e`), 10 files, +248/−32, on branch `autolearn/scribe-upstream` in
   `~/.omp/wt/autolearn-scribe-upstream-5d0aaffaf1` (based on `origin/main`
   5d0aaffaf1; the change applied as a clean cherry-pick). On that base: 105/105
@@ -373,22 +373,22 @@ fast-forwarded into `custom`; the launcher rebuilt `dist/omp` on first use.
   `mergeable_state: unstable` with no checks reported on the branch yet.
   Commits on this branch are **unsigned**: `~/.ssh` was emptied mid-session, so
   `commit.gpgsign=true` had no key to sign with.
-- **Off until configured.** Code defaults stay conservative: `autolearn.scribe:
+- [ ] off-until-configured · open · owner:- · blocked:- · **Off until configured.** Code defaults stay conservative: `autolearn.scribe:
   false`, `autolearn.model` empty (= the `smol` role), `autolearn.autoContinue:
   false`. The install needs, in `~/.omp/agent/config.yml`:
   `autolearn.scribe: true`, `autolearn.model: ef/qwen3.5-9b`, and (for the
   in-turn capture nudge) `autolearn.autoContinue: true`.
-- **Print mode can drop the pass.** Measured: an `omp -p` run whose turn made 6
+- [ ] print-mode-can-drop · open · owner:- · blocked:- · **Print mode can drop the pass.** Measured: an `omp -p` run whose turn made 6
   tool calls sent the stand-in scribe model **0** requests, while the same prompt
   driven in-process sent the pass. [INFERENCE] `beginDispose` sets `#isDisposed`
   and calls `#abortAutolearnCapture` while the pass is still awaiting its model
   resolution, so a short-lived process loses it. Interactive sessions are
   unaffected; decide whether the pass should survive dispose.
-- **Dispose budget.** `#drainAutolearnCapture` waits 3 s for an in-flight pass
+- [ ] dispose-budget · open · owner:- · blocked:- · **Dispose budget.** `#drainAutolearnCapture` waits 3 s for an in-flight pass
   (`agent-session.ts`). A local 9B scribe over a long transcript can exceed that
   and be dropped with "Auto-learn capture did not settle during dispose". Decide
   whether the scribe deserves its own budget.
-- **Scribe writes only managed skills here.** With `memory.backend: sharpshooter`
+- [ ] scribe-writes-only-managed · open · owner:- · blocked:- · **Scribe writes only managed skills here.** With `memory.backend: sharpshooter`
   the `learn` tool is never registered (`tools/learn.ts` `createIf` accepts only
 (`hindsight|mnemopi|local`), so the pass can mint/enhance managed skills but not
   record durable facts. Whether `learn` should gain a sharpshooter branch is an
@@ -402,14 +402,14 @@ fast-forwarded in. An Esc interrupt that lands before the model emits anything
 now drops the unanswered user turn (live context and persisted branch) and hands
 its text back through `setPromptDropped`, so interactive mode refills the editor.
 
-- **No PR.** Pushing is a public action and the user has not approved it. The PR
+- [ ] no-pr-2 · blocked · owner:- · blocked:upstream · **No PR.** Pushing is a public action and the user has not approved it. The PR
   needs a branch off `origin/main` plus a `## [Unreleased]` changelog entry;
   `custom` MUST NOT carry that entry (per `skill://omp-change-and-install`).
-- **Host-scoped by design.** The rewind only runs when a host registered
+- [ ] host-scoped-by-design · open · owner:- · blocked:- · **Host-scoped by design.** The rewind only runs when a host registered
   `setPromptDropped` — interactive mode. Print, RPC, and ACP keep the current
   behavior (the user message stays in the transcript). Decide whether any of them
   should gain a restore channel of their own.
-- **Non-image attachments are not restored.** `#restoreInterruptedEmptyPrompt`
+- [ ] non-image-attachments-are · open · owner:- · blocked:- · **Non-image attachments are not restored.** `#restoreInterruptedEmptyPrompt`
   builds its payload from `toRestoredQueuedMessage` (text + image blocks), so a
   video preview or other attachment submitted with the prompt is lost when the
   turn is restored. Decide whether the restore must carry them.
