@@ -45,11 +45,11 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
   same one-word fix now exists twice — on `custom` and on the PR branch — so the
   PR MUST land before the next upstream merge.
 
-## `uptime` builtin reports a 2023 boot time when no BOOT_TIME record exists (2026-10-18)
+## The in-process `uptime` builtin is gone from the shell — landed on `custom` (`09210499e7`), not upstreamed (2026-10-18)
 
-`uptime` in the embedded shell is `pi-builtins`' in-process builtin
-(`crates/pi-builtins/src/uptime.rs`, registered at `factory.rs:327-328`), so it
-shadows `/usr/bin/uptime`. `/var/run/utmp` on this box holds no BOOT_TIME
+`uptime` in the embedded shell **was** `pi-builtins`' in-process builtin
+(`crates/pi-builtins/src/uptime.rs`, registered at `factory.rs:327-328`), and it
+shadowed `/usr/bin/uptime`. `/var/run/utmp` on this box holds no BOOT_TIME
 record, and the builtin then takes gnulib's fallback — the **first** mtime in
 `BOOT_TOUCHED_FILES` (`uptime.rs:441-456`) that is ≥ `1_122_334_455`. Order is
 `/var/lib/systemd/random-seed`, `/var/lib/urandom/random-seed`,
@@ -70,12 +70,22 @@ the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`
   `uptime.rs`) plus a rebuild.
 - **`enable -n uptime` works in a shell** and hands `uptime` back to
   `/usr/bin/uptime` for that session's shell only.
-- **Decided 2026-10-18: left in place.** The user declined both dropping the
-  builtin and deleting the stale `/var/lib/random-seed`, so no fix is planned
-  and nothing was removed. Read the boot time from `/proc/uptime`,
-  `/usr/bin/uptime`, or `enable -n uptime` instead of the builtin. Fixing the
-  fallback order remains the only route that would also repair coreutils
-  `who -b`, if it is ever worth doing.
+- **Landed `09210499e7`** — "dropped the in-process uptime builtin". The
+  builtin, its `util.uptime` feature, its module, its arm in the `time_zone`
+  gate, and its name in the registry test's expected list
+  (`crates/pi-shell/src/shell.rs`) are gone, so the name resolves to the system
+  binary. Built in `~/.omp/wt/drop-uptime-builtin-7914a308b5` off `custom`,
+  rebased onto the two `docs(open)` commits that landed meanwhile, and
+  fast-forwarded into `omp-custom`.
+- **Verified**: `cargo nextest run -p pi-builtins -p pi-shell` → 2252 tests,
+  2251 passed, 1 skipped, and one failure —
+  `df::tests::total_row_names_target_dash_when_source_is_shown`, a column-width
+  assertion that fails the same way on unmodified `custom` (environment
+  dependent, milage: `total            -` vs `total          -`).
+  `every_utility_builtin_is_registered_under_its_own_name` passes with the name
+  removed; `cargo fmt --check` is clean. Deleting the stale
+  `/var/lib/random-seed` was declined and stays undone, so coreutils `who -b`
+  still prints 2023.
 
 ## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
 
