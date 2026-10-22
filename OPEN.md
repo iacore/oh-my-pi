@@ -463,3 +463,12 @@ are set as fish universal variables, in `~/.config/dinit.d/xserver.env`, and in
 `~/.config/environment.d/90-no-omp-toasts.conf`. `shouldDeliverDesktopNotification` returns
 false under that variable (checked this session). Sessions started before the change keep the old
 environment until restarted.
+
+<!-- item: follow-ups-found-in-the-2026-10 state=open owner=- blocked=human -->
+## Follow-ups the 2026-10-23 review rounds surfaced but did not take
+
+- #16103: the bash tool still silently drops an explicit `pty: true` on an `async: true` call (`packages/coding-agent/src/tools/bash.ts:1217-1221`); error vs documented no-op is a product call.
+- #11840: `Ctrl+H` for the folded view needs the kitty keyboard protocol; a lone multi-target read keeps a joined-paths head.
+- #15460: the 60 s one-shot settle drain — setting, shorter budget, or applied to interactive quit as well.
+- #14271: the role strip omits an unavailable role's chip; whether it offers an explicit clear is open.
+- #14419: whether Esc in a focused view may hard-abort a delegated `task` run, or must be gated.
