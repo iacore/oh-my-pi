@@ -427,3 +427,39 @@ its text back through `setPromptDropped`, so interactive mode refills the editor
   builds its payload from `toRestoredQueuedMessage` (text + image blocks), so a
   video preview or other attachment submitted with the prompt is lost when the
   turn is restored. Decide whether the restore must carry them.
+<!-- item: upstream-pr-review-round-2026-10-23 state=blocked owner=- blocked=upstream -->
+## Twelve upstream PR review rounds answered — all rebased on `upstream/main` `0b5c27ab24`, awaiting maintainer review (2026-10-23)
+
+Each branch was rebased, its review threads answered, and the valid findings fixed in the tree.
+Branches live on `g` (iacore/oh-my-pi); scratch worktrees under `/var/tmp/omp-pr/` (never `/tmp`,
+a 5.8G tmpfs that fills with a dozen `bun install`s).
+
+- #11840 `feat/tool-output-details` `9b64b26d89` — `display.hideToolOutputDetails`.
+- #16103 `fix/doas-auth-terminal` `ce28e911db` — auth-terminal routing; the same fix rides `custom` as `0303e0f488`.
+- #15460 `autolearn/scribe-upstream` `26ca79e48c` — session-settle scribe.
+- #15258 `feat-paste-image-path-attachment` `59f9a15029`.
+- #15253 `fix/jit-skill-loading` `6a3496a6e0`.
+- #15251 `feat-skill-name-unicode` `129ca87919`.
+- #14603 `fix/user-instructions-xml-block` `31d0291ea7`.
+- #14419 `fix/focused-agent-esc-interrupt` `6d78740b71` — Esc aborting a delegated `task` run is the maintainer's call.
+- #14352 `feat/tan-view-focus` `9ee009edc7`.
+- #14271 `fix/model-hub-unavailable-role` `ad8b68bfb1`.
+- #14206 `feat/lithosai-provider` `ebe6ea423d` — accepting the provider is the maintainer's call.
+- #12695 `fix/btw-panel-top-gap` `1e4ad01b69`.
+
+Open questions left in the threads: the 60 s one-shot settle drain (#15460), whether an explicit
+`pty: true` + `async: true` pair should error (#16103), and whether the strip offers a clear for an
+unavailable role (#14271). Merge order matters for #16103: it duplicates `custom`'s `0303e0f488`.
+
+<!-- item: omp-desktop-toasts-disabled-for state=done owner=- blocked=- -->
+## omp desktop toasts disabled for every future session (2026-10-23)
+
+A toast titled `omp` with body `ping` appeared with no session name and no content, and nothing in
+the tree sends `ping` from a production path — the string is the `buildDesktopNotifyCommand` test
+fixture in `packages/tui/test/desktop-notify.test.ts`, and every production sender uses
+`Complete` / `Waiting for input` / `Terminal protocol test`. Whichever process emitted it, the
+pi-tui D-Bus fan-out is now off by default: `PI_NO_DESKTOP_NOTIFY=1` and `PI_NOTIFICATIONS=off`
+are set as fish universal variables, in `~/.config/dinit.d/xserver.env`, and in
+`~/.config/environment.d/90-no-omp-toasts.conf`. `shouldDeliverDesktopNotification` returns
+false under that variable (checked this session). Sessions started before the change keep the old
+environment until restarted.
