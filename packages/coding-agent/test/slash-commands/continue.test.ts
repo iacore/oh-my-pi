@@ -147,7 +147,7 @@ describe("/continue dispatch (ACP)", () => {
 
 		expect(h.continueInterrupted).not.toHaveBeenCalled();
 		expect((h.output.mock.calls[0]?.[0] as string) ?? "").toContain("before continuing");
-		expect(result).toEqual({ consumed: true });
+		expect(result).toEqual({ consumed: true, failed: true });
 	});
 
 	it("requests an empty prompt, keeping its ACP turn open, when there is nothing to continue", async () => {
