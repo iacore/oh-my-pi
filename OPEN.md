@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+<!-- item: autoresearch-extension-removed state=done owner=- blocked=- -->
+## Built-in autoresearch removed from `custom` (2026-10-27)
+
+Never used in any past session, so the whole feature is gone: the
+`packages/coding-agent/src/autoresearch/` extension (its slash command,
+`init_experiment` / `run_experiment` / `log_experiment` / `update_notes` tools,
+the SQLite run store and the branch/commit plumbing), its four test files, the
+TUI side (`apps/autoresearch-dashboard.ts`, `apps/autoresearch-data.ts`,
+`tools/autoresearch.ts` and their test), the `./autoresearch*` exports in
+`packages/coding-agent/package.json`, `getAutoresearch*` in
+`packages/utils/src/dirs.ts`, and the doc rows (`environment-variables.md`,
+`session.md`, `DEVELOPMENT.md`).
+
+- **Evidence of no use**: `agent.db`'s `command_usage` lists 18 commands and
+  none is `autoresearch`; no session transcript contains a
+  `log_experiment` / `init_experiment` tool call; the only mentions across all
+  sessions were reads of the feature's own source and of its tests' temp dirs.
+- **Runtime check**: a `createAgentSession` smoke on the edited tree reports
+  extension commands `deepseek-sandbox,reply-envelope` — no `autoresearch`.
+- **Verified**: `check:types` clean for all 16 packages; `packages/tui` 4033
+  pass / 0 fail; `packages/utils` 918 pass / 0 fail; the affected
+  coding-agent tests 31/31; `oxlint` silent and `oxfmt --check` clean on the
+  touched files; `cli.ts --smoke-test` ok. `sdk-*.test.ts` + `slash-commands`
+  batch shows one failure (`AsyncJobManager … secondary session disposes`) that
+  reproduces identically on the unmodified tree — pre-existing, not this change.
+- **Cost**: every future upstream merge can conflict where upstream still
+  imports `./autoresearch` from `sdk.ts`. The fork took the deletion
+  deliberately; when `sdk.ts` conflicts, keep the deletion.
+
 <!-- item: doas-sudo-bash-calls-get state=blocked owner=- blocked=upstream -->
 ## `doas`/`sudo` bash calls get a terminal for their password prompt — landed on `custom` (`0303e0f488`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-18)
 
