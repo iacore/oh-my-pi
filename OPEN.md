@@ -480,3 +480,13 @@ A line naming a local image file draws that file, but only its first frame: an a
 animated WebP shows its poster frame, since `RasterFigure` hands the bytes to `Image`, which places
 one graphic. A picture taller than 60% of the viewport is capped to that height, and a block reads
 its file once per path — replacing the bytes at the same path does not redraw it in that block.
+
+<!-- item: inline-image-lines-pr-17118 state=blocked owner=- blocked=upstream -->
+## Inline image files: upstreamed as PR #17118
+
+The feature landed on `custom` as `d8b88efcf4`. The upstream hand-off is
+[can1357/oh-my-pi#17118](https://github.com/can1357/oh-my-pi/pull/17118), branch `feat/inline-image-files`
+from `dcafcef642`, two commits (feature + CHANGELOG entry), `MERGEABLE` with checks pending. Ported
+cleanly apart from `OPEN.md`, which upstream does not carry and which the PR therefore omits. If the
+maintainer asks for a different target syntax or a setting default, the change is `chat/image-source.ts`
+(what may lift) and `chat/raster-figure.ts` (how it draws).
