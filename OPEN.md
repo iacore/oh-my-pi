@@ -472,3 +472,11 @@ environment until restarted.
 - #15460: the 60 s one-shot settle drain — setting, shorter budget, or applied to interactive quit as well.
 - #14271: the role strip omits an unavailable role's chip; whether it offers an explicit clear is open.
 - #14419: whether Esc in a focused view may hard-abort a delegated `task` run, or must be gated.
+
+<!-- item: a-shown-picture-is-a-static-frame state=open owner=- blocked=- -->
+## A shown picture is a static frame
+
+A line naming a local image file draws that file, but only its first frame: an animated GIF or
+animated WebP shows its poster frame, since `RasterFigure` hands the bytes to `Image`, which places
+one graphic. A picture taller than 60% of the viewport is capped to that height, and a block reads
+its file once per path — replacing the bytes at the same path does not redraw it in that block.

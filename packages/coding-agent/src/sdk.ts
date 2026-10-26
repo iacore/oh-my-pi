@@ -389,6 +389,7 @@ import {
 	cfgTuiReactions,
 	cfgTuiAutoGraph,
 	cfgTuiRenderMermaid,
+	cfgTuiRenderImages,
 	cfgTuiRenderSvg,
 } from "./modes/settings";
 import { cfgLspEnabled, cfgLspLazy, cfgLspShared } from "./lsp/settings";
@@ -4160,6 +4161,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				subagent: agentKind === "sub",
 				renderMermaid: tuiTranscript && cfgTuiRenderMermaid.get(settings),
 				renderSvg: tuiTranscript && cfgTuiRenderSvg.get(settings),
+				renderImages: tuiTranscript && cfgTuiRenderImages.get(settings),
 				autoGraph: tuiTranscript && cfgTuiAutoGraph.get(settings) !== "off",
 				reactions: agentKind === "main" && options.hasUI === true && cfgTuiReactions.get(settings),
 				activeRepoContext,
