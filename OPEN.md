@@ -1,5 +1,44 @@
 # Open items — omp-custom
 
+<!-- item: autolearn-policy-moved-to-extension state=blocked owner=- blocked=human -->
+## Auto-learn policy moved out of core into an extension (2026-10-27)
+
+`/skill:save` was typed by hand in every session that ever captured a lesson —
+the archive's prompt history shows twelve such prompts and no implicit capture.
+The core's standing auto-learn guidance produced nothing: only two session
+transcripts contain it, and neither calls `manage_skill`. Its three knobs
+(`autolearn.autoContinue`, `autolearn.scribe`, `autolearn.minToolCalls`) were
+core settings left off.
+
+The plumbing stays in core because it cannot move: `manage_skill` and `learn`
+write through `autolearn/managed-skills.ts`, and skill discovery reads that
+directory. What moved is the policy — guidance text, the stop that triggers a
+capture, and the rate — into `~/.omp/agent/extensions/autolearn/`, where
+`config.yml` sets `minToolCalls`, `cooldownTurns`, `maxPerSession`.
+
+- **Capture mechanism**: a hidden `session_stop` continuation
+  (`continue: true` + `additionalContext`); `stop_hook_active` stops the loop,
+  `ctx.agent.depth !== 0` keeps subagents out.
+- **Deleted from core**: `AutoLearnController`, the detached capture-agent
+  runner (`createAutoLearnCaptureRunner`, `AgentSession.runAutolearnCapture`
+  and its abort/drain plumbing), five autolearn prompt files, and
+  `test/autolearn-controller.test.ts`. `autolearn.enabled` now only exposes the
+  tools and the managed-skills discovery.
+- **Verified**: `check:types` clean; `oxlint` silent on touched files; 49 tests
+  pass across `agent-session-fork-at-entry`, `autolearn-discovery`,
+  `agent-session-memory-backend`; a stub-`pi` smoke of the extension exercised
+  guidance injection, the tool-call threshold, the cooldown, the correction
+  trigger, the aborted-turn skip, and the subagent skip.
+- **Open (human)**: the extension source is unversioned — it lives only in
+  `~/.omp/agent/extensions/autolearn/`, beside `grounding-gate.ts`. Decide
+  whether extensions belong in a repo before the next reinstall.
+- **Cost**: upstream still ships the controller; every merge that touches
+  `sdk.ts` around the session wiring will conflict, and the resolution keeps
+  the deletion.
+- **Attribution note**: the file deletions themselves landed in `35604ae15a`
+  (a docs commit created while this change was staged); `1daea6eea2` carries
+  the rest.
+
 <!-- item: autoresearch-extension-removed state=done owner=- blocked=- -->
 ## Built-in autoresearch removed from `custom` (2026-10-27)
 
