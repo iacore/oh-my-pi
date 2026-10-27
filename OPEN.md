@@ -519,3 +519,29 @@ from `dcafcef642`, two commits (feature + CHANGELOG entry), `MERGEABLE` with che
 cleanly apart from `OPEN.md`, which upstream does not carry and which the PR therefore omits. If the
 maintainer asks for a different target syntax or a setting default, the change is `chat/image-source.ts`
 (what may lift) and `chat/raster-figure.ts` (how it draws).
+
+<!-- item: tool-card-intent-pr-17197 state=blocked owner=- blocked=upstream -->
+## Live tool cards keep the model's intent: upstreamed as PR #17197
+
+`tool_execution_start` carries the execution args, and the harness strips `i`
+from those before running the tool, so a card built or refreshed from the event
+rendered without the intent while the same card rebuilt from the stored message
+block had it: in Tern a bash call drew a bare "Bash" (that head's target IS the
+intent, `packages/tui/src/tools/bash.ts` `shellToolHead`) and only a resumed
+session showed "Bash Listing the files". Fixed on `custom` as `b33e30feee` with
+`renderArgsWithIntent()` in `modes/controllers/event-controller.ts` (both
+`tool_execution_start` paths) plus the `json-tree.ts` args summary hiding
+`i`/`__partialJson` on both budgeting branches.
+
+- **Upstream**: [can1357/oh-my-pi#17197](https://github.com/can1357/oh-my-pi/pull/17197),
+  branch `fix/tool-card-intent` in `~/.omp/wt/tool-intent-3a2424f7be` from
+  `origin/main` `3a2424f7be`, two commits (fix + CHANGELOG entry), `MERGEABLE`.
+- **Verification**: `event-controller-tool-intent.test.ts` fails on both cases
+  with the source change reverted; `test/modes/controllers/` 332 pass;
+  `bun check` clean in `packages/coding-agent` and `packages/tui`; a live turn
+  inside an isolated Tern 0.9.5 window (Xvfb, throwaway profile) rendered
+  `BashChecking the shell0.0sDone0.0s`, where the same call rendered
+  `Bash0.0sDone0.0s` before.
+- **If the maintainer wants another shape**: the merge lives at the one helper;
+  an alternative is to have the agent emit `i` back into the event args, which
+  would leak harness metadata into tool execution — do not.
