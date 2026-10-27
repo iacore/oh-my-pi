@@ -12,6 +12,11 @@
 #   ts        always `bun src/cli.ts` (the pre-cache-tuned dev loop; also forced
 #             when PI_TIMING is set, since the module timer is a preload).
 #
+# `OMP_BUILD_ONLY=1` builds (or verifies) the artifact and exits without
+# launching: 0 when the artifact is current, 1 when it cannot be built. The
+# AoT builder `scripts/omp-aot` drives it so the expensive compile happens
+# ahead of a launch instead of on top of one.
+#
 # The compiled binary embeds its own runtime and autoloads no bunfig/tsconfig/
 # .env, so it needs neither the empty-directory dance below nor the preload
 # shim; the source path still does.
@@ -54,6 +59,9 @@ state=$pkg_dir/dist/omp-launch.state
 
 launch_dir=${OMP_DEV_LAUNCH_DIR:-${HOME}/.omp/.dev-cwd}
 
+# Build-and-exit mode; see the header.
+build_only=${OMP_BUILD_ONLY:-}
+
 # Herdr 0.7.5 validates the foreground process name. The macOS shell can
 # preserve OMP's identity while still running the development CLI through Bun.
 run_identity() {
@@ -64,6 +72,10 @@ run_identity() {
 }
 
 launch_source() {
+	if [ -n "$build_only" ]; then
+		echo "omp: cannot produce the compiled CLI on this checkout (source-only fallback)" >&2
+		exit 1
+	fi
 	# Bun reads bunfig.toml from the *current* directory at startup, so start it
 	# empty and let the preload shim restore $PWD inside the process. Only this
 	# path needs it: the compiled binary autoloads no bunfig and must keep the
@@ -92,12 +104,30 @@ addon_mtime() {
 # to the checkout (pull, merge, edit, stage) moves at least one field; untracked
 # scratch files do not, so creating a note or a `.codegraph/` index no longer
 # forces a rebuild of an artifact they cannot affect.
+#
+# Build outputs are excluded: `bun run build` writes
+# `packages/stats/src/embedded-client.generated.txt` and resets it afterwards, so
+# a build that is killed between the two (cancelled AoT build, Ctrl-C, OOM)
+# leaves it dirty — counting that as a source change would make the next
+# successful build record a generation that is stale the moment it finishes, and
+# the launch after it would rebuild the 76 s artifact again.
+#
+# The working-tree *content* is hashed too: `status --porcelain` only names the
+# dirty paths, so a second edit to an already-dirty file (the normal state of a
+# checkout being worked on) would leave the generation unchanged and keep a
+# stale artifact. `difft` is this box's `diff.external`, hence `--no-ext-diff`;
+# the pair costs ~20 ms.
 bun --version >/dev/null 2>&1 || launch_source "$@"
 generation() {
 	{
 		bun --version
 		git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo nogit
-		git -C "$repo_root" status --porcelain --untracked-files=no 2>/dev/null
+		git -C "$repo_root" status --porcelain --untracked-files=no -- . \
+			':(exclude)packages/stats/src/embedded-client.generated.txt' \
+			':(exclude)packages/coding-agent/src/export/html/tool-views.generated.js' 2>/dev/null
+		git -C "$repo_root" diff --no-ext-diff HEAD -- . \
+			':(exclude)packages/stats/src/embedded-client.generated.txt' \
+			':(exclude)packages/coding-agent/src/export/html/tool-views.generated.js' 2>/dev/null | cksum
 		addon_mtime
 	} | cksum
 }
@@ -116,30 +146,98 @@ run_compiled() {
 
 # Fresh artifact for this generation: run it.
 if [ -x "$artifact" ] && [ "$recorded" = "$generation ok" ]; then
+	[ -n "$build_only" ] && exit 0
 	run_compiled "$@"
 fi
 
 # Already tried and failed for this generation: do not pay the build again.
-[ "$recorded" = "$generation failed" ] && launch_source "$@"
-
-# One builder at a time; everyone else takes the source path instead of waiting.
-if ! mkdir "$lock_dir" 2>/dev/null; then
+# A build request, unlike a launch, is an explicit "try again".
+if [ "$recorded" = "$generation failed" ] && [ -z "$build_only" ]; then
 	launch_source "$@"
 fi
-trap 'rmdir "$lock_dir" 2>/dev/null || true' 0 1 2 15
+
+# One builder at a time; a launcher takes the source path instead of waiting,
+# a build request waits — it has nothing else to do. The recorded pid lets a
+# builder killed outright (SIGKILL, OOM) leave a lock that the next one clears
+# instead of blocking every future build forever.
+take_lock() {
+	mkdir "$lock_dir" 2>/dev/null && { echo $$ > "$lock_dir/pid"; return 0; }
+	owner=$(cat "$lock_dir/pid" 2>/dev/null || true)
+	case $owner in
+	'' | *[!0-9]*) ;;
+	*)
+		# Liveness by cmdline, not `kill -0`: a zombie still answers `kill -0`,
+		# and a recycled pid would make the lock permanent. Only a live dev
+		# launcher (`scripts/omp ` — not `scripts/omp.ts`) holds this lock.
+		if [ -r "/proc/$owner/cmdline" ] && tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'scripts/omp '; then
+			return 1
+		fi
+		;;
+	esac
+	rm -rf "$lock_dir"
+	mkdir "$lock_dir" 2>/dev/null && { echo $$ > "$lock_dir/pid"; return 0; }
+	return 1
+}
+
+if ! take_lock; then
+	[ -z "$build_only" ] && launch_source "$@"
+	echo "omp: another build holds the lock; waiting for it..." >&2
+	waited=0
+	while ! take_lock; do
+		if [ "$waited" -ge 1200 ]; then
+			echo "omp: build lock still held after 600s; giving up" >&2
+			exit 1
+		fi
+		sleep 0.5
+		waited=$((waited + 1))
+	done
+fi
+build_child=
+stop_build() {
+	rm -rf "$lock_dir" 2>/dev/null || true
+	if [ -n "$build_child" ]; then
+		kill -s TERM "$build_child" 2>/dev/null || true
+	fi
+	exit 143
+}
+trap 'rm -rf "$lock_dir" 2>/dev/null || true' 0
+trap stop_build 1 2 15
 
 echo "omp: building the compiled CLI (sources changed since the last build)..." >&2
 build_started=$(date +%s)
-if (cd "$pkg_dir" && bun run build) >"$build_log" 2>&1 && [ -x "$artifact" ] && [ "$(stat -c %Y "$artifact" 2>/dev/null || stat -f %m "$artifact")" -ge "$build_started" ]; then
+(cd "$pkg_dir" && exec bun run build) >"$build_log" 2>&1 &
+build_child=$!
+build_status=0
+wait "$build_child" || build_status=$?
+build_child=
+if [ "$build_status" -eq 0 ] && { [ ! -x "$artifact" ] || [ "$(stat -c %Y "$artifact" 2>/dev/null || stat -f %m "$artifact")" -lt "$build_started" ]; }; then
+	build_status=1
+fi
+if [ "$build_status" -eq 0 ]; then
 	echo "$generation ok" >"$state"
-	rmdir "$lock_dir" 2>/dev/null || true
+	rm -rf "$lock_dir" 2>/dev/null || true
 	trap - 0 1 2 15
+	[ -n "$build_only" ] && exit 0
 	run_compiled "$@"
+fi
+
+rm -rf "$lock_dir" 2>/dev/null || true
+trap - 0 1 2 15
+
+# A build killed by a signal was cancelled — by a newer `scripts/omp-aot`
+# request, by Ctrl-C, by the OOM killer. Recording it as `failed` would make the
+# next launch skip the rebuild and run from source, so leave the recorded state
+# alone and let the caller decide.
+if [ "$build_status" -ge 128 ]; then
+	echo "omp: build interrupted by signal $((build_status - 128)); recorded state unchanged" >&2
+	exit "$build_status"
 fi
 
 echo "$generation failed" >"$state"
 tail -n 15 "$build_log" >&2 || true
+if [ -n "$build_only" ]; then
+	echo "omp: build failed" >&2
+	exit 1
+fi
 echo "omp: build failed; running from source" >&2
-rmdir "$lock_dir" 2>/dev/null || true
-trap - 0 1 2 15
 launch_source "$@"

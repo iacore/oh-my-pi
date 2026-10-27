@@ -1,0 +1,163 @@
+#!/bin/sh
+# Build packages/coding-agent/dist/omp ahead of time.
+#
+# The compile is ~75 s; `scripts/omp` would otherwise pay it on the launch that
+# follows an edit. Run this after every change to the checkout and the next
+# `omp` starts on a current artifact instead.
+#
+#   scripts/omp-aot           cancel the build in flight, start a new one, return
+#   scripts/omp-aot --wait    same, then block until that build finishes
+#   scripts/omp-aot --status  report the last build (no new build)
+#
+# Latest request wins: a new invocation SIGTERMs the running builder's whole
+# session (the launcher's flock-equivalent lock is released by its trap), so a
+# burst of edits collapses into one build of the final tree. The worker runs
+# under `setsid`, so it survives the shell that asked for it and can be killed
+# as one process group.
+#
+# State lives beside the artifact, in the ignored `dist/`:
+#   .omp-aot.pid      session leader pid of the builder (pgid == pid)
+#   .omp-aot.status   `ok` or `failed`, from the last finished build
+#   omp-aot.log       build output
+set -e
+
+self=$0
+while [ -L "$self" ]; do
+	link=$(readlink "$self")
+	case $link in
+	/*) self=$link ;;
+	*) self=$(dirname "$self")/$link ;;
+	esac
+done
+scripts_dir=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P)
+pkg_dir=$(CDPATH= cd -- "$scripts_dir/.." && pwd -P)
+launcher=$scripts_dir/omp
+
+dist=$pkg_dir/dist
+pid_file=$dist/.omp-aot.pid
+status_file=$dist/.omp-aot.status
+log=$dist/omp-aot.log
+spawn_lock=$dist/.omp-aot.spawn
+build_lock=$dist/.omp-build.lock
+
+mkdir -p "$dist"
+
+builder_alive() {
+	# A live session leader we started: the cmdline must still be this script.
+	[ -r "/proc/$1/cmdline" ] || return 1
+	tr '\0' ' ' <"/proc/$1/cmdline" | grep -q 'scripts/omp-aot'
+}
+
+# A builder killed outright could not run its trap, and the launcher's lock
+# would then block every later build: clear it when its owner is not a live
+# launcher (`scripts/omp `, not `scripts/omp.ts`; a zombie answers `kill -0`
+# but has no cmdline).
+clear_stale_build_lock() {
+	[ -d "$build_lock" ] || return 0
+	owner=$(cat "$build_lock/pid" 2>/dev/null || true)
+	case $owner in
+	'' | *[!0-9]*) rm -rf "$build_lock" && echo "omp-aot: cleared a pid-less build lock" >&2 ;;
+	*)
+		if [ -r "/proc/$owner/cmdline" ] && tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'scripts/omp '; then
+			return 0
+		fi
+		rm -rf "$build_lock"
+		echo "omp-aot: cleared the build lock of dead pid $owner" >&2
+		;;
+	esac
+}
+
+cancel_previous() {
+	[ -f "$pid_file" ] || return 0
+	pid=$(cat "$pid_file" 2>/dev/null || true)
+	rm -f "$pid_file"
+	case $pid in '' | *[!0-9]*) return 0 ;; esac
+	[ "$pid" = "$$" ] && return 0
+	builder_alive "$pid" || return 0
+	echo "omp-aot: cancelling build $pid" >&2
+	kill -s TERM -- "-$pid" 2>/dev/null || true
+	i=0
+	while kill -s 0 -- "-$pid" 2>/dev/null; do
+		i=$((i + 1))
+		if [ "$i" -ge 100 ]; then
+			echo "omp-aot: build $pid ignored SIGTERM; killing it" >&2
+			kill -s KILL -- "-$pid" 2>/dev/null || true
+			break
+		fi
+		sleep 0.1
+	done
+}
+
+case ${1:-} in
+--status)
+	if [ -f "$pid_file" ] && builder_alive "$(cat "$pid_file" 2>/dev/null || echo 0)"; then
+		echo "building (pid $(cat "$pid_file"))"
+	else
+		echo "last build: $(cat "$status_file" 2>/dev/null || echo none)"
+	fi
+	exit 0
+	;;
+--worker)
+	echo "$$" >"$pid_file"
+	if OMP_BUILD_ONLY=1 sh "$launcher"; then
+		echo ok >"$status_file"
+	else
+		rc=$?
+		if [ "$rc" -ge 128 ]; then
+			echo interrupted >"$status_file"
+		else
+			echo failed >"$status_file"
+		fi
+		exit "$rc"
+	fi
+	exit 0
+	;;
+esac
+
+wait_mode=
+[ "${1:-}" = "--wait" ] && wait_mode=1 && shift
+
+# One cancel-and-spawn at a time; the window is milliseconds.
+i=0
+while ! mkdir "$spawn_lock" 2>/dev/null; do
+	i=$((i + 1))
+	if [ "$i" -ge 200 ]; then
+		echo "omp-aot: another omp-aot is spawning; giving up" >&2
+		exit 1
+	fi
+	sleep 0.05
+done
+trap 'rm -rf "$spawn_lock"' 0 1 2 15
+
+cancel_previous
+clear_stale_build_lock
+: >"$log"
+rm -f "$pid_file" "$status_file"
+setsid sh "$self" --worker "$@" >>"$log" 2>&1 </dev/null &
+# The worker records its own pid as its first act: `setsid` forks when its
+# child would be a process-group leader, so the job pid here is not always the
+# builder's, and the pgid we must signal is the worker's own.
+i=0
+while [ ! -s "$pid_file" ]; do
+	i=$((i + 1))
+	if [ "$i" -ge 200 ]; then
+		echo "omp-aot: builder did not start; see $log" >&2
+		rm -rf "$spawn_lock"
+		exit 1
+	fi
+	sleep 0.05
+done
+pid=$(cat "$pid_file")
+rm -rf "$spawn_lock"
+trap - 0 1 2 15
+
+if [ -n "$wait_mode" ]; then
+	while kill -s 0 -- "$pid" 2>/dev/null && builder_alive "$pid"; do
+		sleep 0.5
+	done
+	rm -f "$pid_file"
+	echo "omp-aot: build $(cat "$status_file" 2>/dev/null || echo unknown)"
+	[ "$(cat "$status_file" 2>/dev/null || true)" = ok ] || exit 1
+else
+	echo "omp-aot: building dist/omp (pid $pid, log $log)"
+fi
