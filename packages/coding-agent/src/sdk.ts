@@ -19,7 +19,6 @@ import type {
 	Message,
 	Model,
 	ModelUsageHealth,
-	ProviderSessionState,
 	ServiceTier,
 	ServiceTierByFamily,
 	SimpleStreamOptions,
@@ -34,7 +33,6 @@ import { withCredentialRedaction } from "@oh-my-pi/pi-ai/providers/transform-mes
 import { sendsImageInputOnWire } from "@oh-my-pi/pi-ai/providers/vision-guard";
 import { resolveCatalogPolicy } from "@oh-my-pi/pi-catalog/compat/catalog-policy";
 import { FALLBACK_DIALECT, preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { clampThinkingLevelForModel } from "@oh-my-pi/pi-catalog/model-thinking";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { $env } from "@oh-my-pi/pi-utils/env";
 import { getAgentDir, getModelDbPath, getProjectDir } from "@oh-my-pi/pi-utils/dirs";
@@ -52,8 +50,6 @@ import {
 	formatAdvisorMemoryPrompt,
 } from "./advisor";
 import { AsyncJobManager } from "./async";
-import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
-import { resolveAutolearnScribeModel } from "./autolearn/scribe";
 import { loadCapability, reset as resetCapabilities } from "./capability";
 import {
 	MAIN_AGENT_RULE_NAME,
@@ -167,7 +163,6 @@ import { resolveMCPToolAlias } from "./mcp/tool-bridge";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
 import { MEMORY_BACKEND_TOOL_NAMES } from "./memory-backend/tool-names";
 import type { MnemopiSessionState } from "./mnemopi/state";
-import autolearnScribeTemplate from "./prompts/system/autolearn-scribe.md" with { type: "text" };
 import mcpXdevGuidanceTemplate from "./prompts/system/mcp-xdev-guidance.md" with { type: "text" };
 import lateDiagnosticTemplate from "./prompts/tools/lsp-late-diagnostic.md" with { type: "text" };
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -1625,114 +1620,6 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
 	return commands;
 }
 
-/** Dependencies used to construct an isolated auto-learn capture agent. */
-export interface AutoLearnCaptureRunnerOptions {
-	sourceAgent: Agent;
-	/** Resolves the capture tools per run, so live `autolearn.enabled` / backend changes apply. */
-	captureTools: () => AgentTool[];
-	/** Resolves the pass model per run; the source agent's model when omitted. */
-	model?: () => Model | undefined | Promise<Model | undefined>;
-	/** Extra system-prompt block for this pass, appended after the source prompt. */
-	systemPromptAppend?: string;
-	createAgent: (options: AgentOptions) => Agent;
-	onPayload?: SimpleStreamOptions["onPayload"];
-	onResponse?: SimpleStreamOptions["onResponse"];
-	createSessionId?: () => string;
-}
-
-/** Build a private capture runner over a detached message snapshot and provider session. */
-export function createAutoLearnCaptureRunner(
-	options: AutoLearnCaptureRunnerOptions,
-): (content: string, signal?: AbortSignal) => Promise<void> {
-	return async (content, signal) => {
-		const captureTools = options.captureTools();
-		if (captureTools.length === 0 || signal?.aborted) return;
-		const captureModel = options.model ? await options.model() : options.sourceAgent.state.model;
-		if (!captureModel) return;
-
-		const captureSessionId = options.createSessionId?.() ?? Bun.randomUUIDv7();
-		const captureProviderSessionState = new Map<string, ProviderSessionState>();
-		const stripInheritedReasoning =
-			captureModel.api === "openai-responses" ||
-			(captureModel.api === "openrouter" && $env.PI_OPENROUTER_RESPONSES !== "0");
-		const captureMessages = options.sourceAgent.state.messages.map((message): AgentMessage => {
-			if (message.role === "assistant") {
-				let content = message.content;
-				if (
-					stripInheritedReasoning &&
-					message.provider === captureModel.provider &&
-					message.api === captureModel.api &&
-					message.model === captureModel.id &&
-					content.some(block => block.type === "thinking" && block.thinkingSignature !== undefined)
-				) {
-					// Fresh capture transport skips inherited native reasoning on its first request.
-					// Keep that history stable when the transport warms; new capture reasoning is untouched.
-					content = content.map(block =>
-						block.type === "thinking" && block.thinkingSignature !== undefined
-							? { ...block, thinkingSignature: undefined }
-							: block,
-					);
-				}
-				return { ...message, content, responseId: undefined, providerPayload: undefined };
-			}
-			if (message.role === "user" || message.role === "developer") {
-				return { ...message, providerPayload: undefined };
-			}
-			return message;
-		});
-		const captureAgent = options.createAgent({
-			initialState: {
-				systemPrompt: options.systemPromptAppend
-					? [...options.sourceAgent.state.systemPrompt, options.systemPromptAppend]
-					: [...options.sourceAgent.state.systemPrompt],
-				model: captureModel,
-				thinkingLevel: clampThinkingLevelForModel(captureModel, options.sourceAgent.state.thinkingLevel),
-				disableReasoning: options.sourceAgent.state.disableReasoning,
-				tools: captureTools,
-				messages: captureMessages,
-			},
-			sessionId: captureSessionId,
-			promptCacheKey: captureSessionId,
-			providerSessionState: captureProviderSessionState,
-			getApiKey: requestModel => options.sourceAgent.getApiKey?.(requestModel),
-			onPayload: options.onPayload,
-			onResponse: options.onResponse,
-		});
-		captureAgent.setMetadataResolver(provider => options.sourceAgent.metadataForProvider(provider));
-		const captureMessage: CustomMessage = {
-			role: "custom",
-			customType: "autolearn-nudge",
-			content,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-		const abortCapture = () => captureAgent.abort(signal?.reason);
-		signal?.addEventListener("abort", abortCapture, { once: true });
-		try {
-			if (signal?.aborted) {
-				abortCapture();
-				return;
-			}
-			await captureAgent.prompt(captureMessage);
-		} catch (error) {
-			if (!signal?.aborted) throw error;
-		} finally {
-			signal?.removeEventListener("abort", abortCapture);
-			for (const [providerKey, state] of captureProviderSessionState) {
-				try {
-					state.close();
-				} catch (error) {
-					logger.warn("Failed to close auto-learn capture provider state", {
-						providerKey,
-						error: String(error),
-					});
-				}
-			}
-			captureProviderSessionState.clear();
-		}
-	};
-}
 /**
  * Create an AgentSession with the specified options.
  *
@@ -4021,29 +3908,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				};
 			}
 
-			// Build combined append prompt: memory instructions + auto-learn guidance
-			// + mounted MCP route guidance + optional MCP server instructions. For UI
+			// Build combined append prompt: memory instructions + mounted MCP route
+			// guidance + optional MCP server instructions. For UI
 			// sessions MCP discovery is deferred, so the initial registry and
 			// `getServerInstructions()` are empty until the background connect
 			// completes; the rebuild that `refreshMCPTools` triggers post-discovery
 			// then picks up the mounted routes and any connected-server instructions.
 			const serverInstructions = mcpManager?.getServerInstructions();
-			// Drive guidance off the auto-learn BUILTINS currently registered (provenance,
-			// not just an active name): a custom/extension tool that merely shares the
-			// name is not built-in, and the settings reconcile adds/removes the built-ins
-			// as `autolearn.enabled` flips — so a subagent that filtered them out or a
-			// same-named custom tool while auto-learn is off get no guidance.
-			const autoLearnInstructions = restrictToolNames
-				? undefined
-				: buildAutoLearnInstructions({
-						manageSkill: hasSession
-							? session.hasBuiltInTool("manage_skill")
-							: builtInRegistryToolNames.has("manage_skill"),
-						learn: hasSession ? session.hasBuiltInTool("learn") : builtInRegistryToolNames.has("learn"),
-					});
 			const appendParts: string[] = [];
 			if (memoryInstructions) appendParts.push(memoryInstructions);
-			if (autoLearnInstructions) appendParts.push(autoLearnInstructions);
 			// List each mounted MCP tool once. A routed tool that the xd:// catalog
 			// would list carries its catalog summary on the route line and gets no
 			// catalog line; a tool the route bound omits keeps its catalog line.
@@ -4491,8 +4364,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			withCredentialRedaction(cfgSecretsEnabled.get(settings), () =>
 				settingsBoundStreamFn(streamModel, context, streamOptions),
 			);
-		// Primary-agent (and its auto-learn capture twin) provider options read per
-		// request, so `/settings` changes to budgets, Kimi format, or the Codex
+		// Primary-agent provider options read per request, so `/settings` changes
+		// to budgets, Kimi format, or the Codex
 		// websocket policy reach the next call without a session recreate.
 		const primaryStreamFn: StreamFn = (streamModel, context, streamOptions) => {
 			const kimiApiFormat = cfgProvidersKimiApiFormat.get(settings);
@@ -5375,109 +5248,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			});
 		};
 
-		const autoLearnRunnerOptions = {
-			sourceAgent: agent,
-			captureTools: () =>
-				(["manage_skill", "learn"] as const)
-					.map(name => session.getToolByName(name))
-					.filter((tool): tool is AgentTool => tool !== undefined),
-			onPayload,
-			onResponse,
-			createAgent: captureOptions => {
-				const captureModel = captureOptions.initialState?.model;
-				const captureSessionId = captureOptions.sessionId;
-				if (!captureModel || !captureSessionId) throw new Error("Auto-learn capture identity is incomplete");
-				const captureDateCwdReminder = new DateCwdReminderInjector();
-				return new Agent({
-					...captureOptions,
-					cwd: sessionManager.getCwd(),
-					cwdResolver: () => sessionManager.getCwd(),
-					convertToLlm: convertToLlmFinal,
-					transformContext: async messages => wrapSteeringForModel(messages),
-					transformProviderContext: async (context, transformModel) => {
-						let transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
-						transformed = capArchiveFrameBytes(transformed, transformModel);
-						transformed = clampProviderContextImages(transformed, transformModel);
-						transformed = await normalizeProviderContextImagesForModel(transformed, transformModel);
-						transformed = await dropUnreadableContextImages(transformed, transformModel);
-						transformed = await blobBroker.decorateContext(transformed, transformModel);
-						transformed = clampProviderContextImageBytes(transformed, transformModel);
-						return captureDateCwdReminder.transform(
-							transformed,
-							formatLocalCalendarDate(),
-							normalizePromptPath(sessionManager.getCwd()),
-						);
-					},
-					temperature: agent.temperature,
-					topP: agent.topP,
-					topK: agent.topK,
-					minP: agent.minP,
-					presencePenalty: agent.presencePenalty,
-					repetitionPenalty: agent.repetitionPenalty,
-					serviceTierResolver: agent.serviceTierResolver,
-					hideThinkingSummary: agent.hideThinkingSummary,
-					maxRetryDelayMs: agent.maxRetryDelayMs,
-					getToolContext: toolCall => toolContextStore.getContext(toolCall),
-					streamFn: primaryStreamFn,
-					transformToolCallArguments,
-					// No fallback resolver. The capture agent advertises only
-					// `learn`/`manage_skill`, both of which stay top-level and never
-					// mount as devices, so it has nothing legitimate to recover — while
-					// the primary session's resolver is bound to the primary agent's
-					// tools and would have let a capture response reach a main-session
-					// MCP tool, side effects included. A hallucinated call from here
-					// correctly stays `not found`, and suggesting session devices it
-					// cannot call would only mislead it.
-					intentTracing: agent.intentTracing,
-					pruneToolDescriptions: agent.pruneToolDescriptions,
-					dialect: resolveDialect(cfgToolsFormat.get(settings), captureModel),
-					abortOnFabricatedToolResult: cfgToolsAbortOnFabricatedResult.get(settings),
-					appendOnlyContext: shouldEnableAppendOnlyContext(
-						cfgProviderAppendOnlyContext.get(settings),
-						captureModel,
-					)
-						? new AppendOnlyContextManager()
-						: undefined,
-				});
-			},
-		} satisfies Omit<AutoLearnCaptureRunnerOptions, "model" | "systemPromptAppend">;
 
-		const runAutoLearnCapture = createAutoLearnCaptureRunner(autoLearnRunnerOptions);
-		// The scribe shares the capture plumbing but chooses its own model and
-		// carries its own standing instructions. `model` resolves per run, so a
-		// session that never has a scribe model simply never scribes.
-		const runAutoLearnScribe = createAutoLearnCaptureRunner({
-			...autoLearnRunnerOptions,
-			model: () => resolveAutolearnScribeModel(settings, modelRegistry),
-			systemPromptAppend: autolearnScribeTemplate.trim(),
-		});
-
-		// Auto-learn can immediately trigger a private capture after the first real
-		// stop. When it is enabled at startup and a memory backend is selected,
-		// install that backend's per-session state first so the capture turn's
-		// `learn` tool observes the same initialized state as normal memory tools.
-		// Other sessions keep memory startup in the background to preserve the
-		// existing startup profile.
-		//
-		// The controller is installed for every top-level session and gates each
-		// stop on the live `autolearn.enabled`, so enabling or disabling it
-		// mid-session takes effect at the next stop; the tool registry reconciles
-		// `learn`/`manage_skill` on the same setting, and captures resolve those
-		// tools per run. The subscription lives for the session's lifetime; the
-		// reference is intentionally discarded (the listener retains it).
+		// Sessions that will need the memory tools start the backend inline; the
+		// rest keep startup in the background to preserve the startup profile.
 		if (!restrictToolNames) {
 			if (cfgAutolearnEnabled.get(settings) && taskDepth === 0) {
 				await logger.time("startMemoryStartupTask", startMemoryBackend);
 			} else {
 				void logger.time("startMemoryStartupTask", startMemoryBackend);
-			}
-			if (taskDepth === 0) {
-				new AutoLearnController({
-					session,
-					settings,
-					capture: content => session.runAutolearnCapture(signal => runAutoLearnCapture(content, signal)),
-					scribe: content => session.runAutolearnCapture(signal => runAutoLearnScribe(content, signal)),
-				});
 			}
 		}
 

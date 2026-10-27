@@ -611,10 +611,10 @@ export function canonicalMCPToolNameCandidates(name: string): string[] {
  * The lookup is a required argument rather than something read from ambient
  * state, because the set a call must resolve against is the one offered to the
  * agent that emitted it. A resolver closing over one agent's tools and then
- * shared with another — the primary session's resolver also handed to the
- * isolated auto-learn capture agent, say — would let a capture response reach a
- * main-session tool it was never offered. Naming the source at every call site
- * makes that mistake unrepresentable.
+ * shared with another — such as a side agent handed the primary session's
+ * resolver — would let that agent's response reach a main-session tool it was
+ * never offered. Naming the source at every call site makes that mistake
+ * unrepresentable.
  *
  * A caller whose tools span several presentation sets (mounted `xd://` devices
  * plus advertised top-level tools) MUST pass one lookup covering the union.

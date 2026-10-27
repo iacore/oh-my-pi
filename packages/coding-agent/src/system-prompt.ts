@@ -620,7 +620,7 @@ export interface BuildSystemPromptResult {
 const renderUserAppend = prompt.compile(userAppendPromptTemplate.trimEnd());
 
 /**
- * Join generated append blocks (memory, auto-learn, `xd://` routes, MCP server
+ * Join generated append blocks (memory, `xd://` routes, MCP server
  * instructions) with the user's append prompt. Keep the user text in its own
  * `<user-instructions>` block so it is not misclassified as MCP
  * server-controlled instructions.

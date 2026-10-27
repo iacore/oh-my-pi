@@ -1,5 +1,7 @@
 /**
- * Managed-skills primitives for the experimental auto-learn feature.
+ * Managed-skills primitives: the `manage_skill`/`learn` tools and the discovery
+ * of the skills they write. When those tools run is policy, and lives in an
+ * operator-tunable extension rather than here.
  *
  * Managed skills are auto-generated/enhanced `SKILL.md` files kept in an
  * isolated directory (`~/.omp/agent/managed-skills`) separate from

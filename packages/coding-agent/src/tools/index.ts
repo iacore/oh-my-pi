@@ -721,10 +721,10 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		// Auto-learn tools are gated by `autolearn.enabled` but, like the memory
 		// tools above, must also be force-included into an explicit requestedTools
-		// list so a restricted top-level session whose controller/guidance is
-		// active still exposes the tools the nudge points at. Gated to top-level
-		// (taskDepth 0): the controller only runs there, so a subagent's explicit
-		// tool whitelist must never be silently widened with write-capable tools.
+		// list: an extension's capture policy may ask the top-level session to use
+		// tools a restricted list left out. Gated to top-level (taskDepth 0) —
+		// capture policy only acts there, so a subagent's explicit tool whitelist
+		// must never be silently widened with write-capable tools.
 		if (cfgAutolearnEnabled.get(session.settings) && (session.taskDepth ?? 0) === 0) {
 			if (!requestedTools.includes("manage_skill")) requestedTools.push("manage_skill");
 			if (
