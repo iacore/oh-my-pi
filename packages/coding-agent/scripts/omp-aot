@@ -38,7 +38,6 @@ pid_file=$dist/.omp-aot.pid
 status_file=$dist/.omp-aot.status
 log=$dist/omp-aot.log
 spawn_lock=$dist/.omp-aot.spawn
-build_lock=$dist/.omp-build.lock
 
 mkdir -p "$dist"
 
@@ -48,23 +47,11 @@ builder_alive() {
 	tr '\0' ' ' <"/proc/$1/cmdline" | grep -q 'scripts/omp-aot'
 }
 
-# A builder killed outright could not run its trap, and the launcher's lock
-# would then block every later build: clear it when its owner is not a live
-# launcher (`scripts/omp `, not `scripts/omp.ts`; a zombie answers `kill -0`
-# but has no cmdline).
-clear_stale_build_lock() {
-	[ -d "$build_lock" ] || return 0
-	owner=$(cat "$build_lock/pid" 2>/dev/null || true)
-	case $owner in
-	'' | *[!0-9]*) rm -rf "$build_lock" && echo "omp-aot: cleared a pid-less build lock" >&2 ;;
-	*)
-		if [ -r "/proc/$owner/cmdline" ] && tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'scripts/omp '; then
-			return 0
-		fi
-		rm -rf "$build_lock"
-		echo "omp-aot: cleared the build lock of dead pid $owner" >&2
-		;;
-	esac
+# Live, non-zombie members of the builder's session. `kill -0` cannot answer
+# this: a zombie leader under a shell that has not reaped it answers forever,
+# and a recycled pid would look like a live build.
+group_alive() {
+	ps -eo sid=,stat= | awk -v g="$1" '$1 == g && $2 !~ /^Z/ {found = 1} END {exit found ? 0 : 1}'
 }
 
 cancel_previous() {
@@ -77,7 +64,7 @@ cancel_previous() {
 	echo "omp-aot: cancelling build $pid" >&2
 	kill -s TERM -- "-$pid" 2>/dev/null || true
 	i=0
-	while kill -s 0 -- "-$pid" 2>/dev/null; do
+	while group_alive "$pid"; do
 		i=$((i + 1))
 		if [ "$i" -ge 100 ]; then
 			echo "omp-aot: build $pid ignored SIGTERM; killing it" >&2
@@ -130,7 +117,9 @@ done
 trap 'rm -rf "$spawn_lock"' 0 1 2 15
 
 cancel_previous
-clear_stale_build_lock
+# A stale `dist/.omp-build.lock` (and any orphaned build tree it belongs to) is
+# left to the launcher's own `take_lock`: it reaps the orphan first, then clears
+# the lock, so nothing can start a compile while an older one is still running.
 : >"$log"
 rm -f "$pid_file" "$status_file"
 setsid sh "$self" --worker "$@" >>"$log" 2>&1 </dev/null &
@@ -152,7 +141,7 @@ rm -rf "$spawn_lock"
 trap - 0 1 2 15
 
 if [ -n "$wait_mode" ]; then
-	while kill -s 0 -- "$pid" 2>/dev/null && builder_alive "$pid"; do
+	while group_alive "$pid"; do
 		sleep 0.5
 	done
 	rm -f "$pid_file"

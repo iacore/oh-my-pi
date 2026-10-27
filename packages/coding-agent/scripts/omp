@@ -54,7 +54,8 @@ timing_preload=$scripts_dir/../../utils/src/module-timer.ts
 
 artifact=$pkg_dir/dist/omp
 build_log=$pkg_dir/dist/omp-build.log
-lock_dir=$pkg_dir/dist/.omp-build.lock
+lock_file=$pkg_dir/dist/.omp-build.lock # symlink whose target is the owner pid
+build_child_file=$pkg_dir/dist/.omp-build-child.pid
 state=$pkg_dir/dist/omp-launch.state
 
 launch_dir=${OMP_DEV_LAUNCH_DIR:-${HOME}/.omp/.dev-cwd}
@@ -144,6 +145,100 @@ run_compiled() {
 	run_identity "$artifact" "$@"
 }
 
+# A build is a tree (`bun run build` -> `bun scripts/build-binary.ts` -> the
+# generators), so killing the recorded pid alone leaves compilers running that
+# could land an artifact after a newer build did. Walk and stop the whole tree.
+tree_of() {
+	ps -eo pid=,ppid= | awk -v root="$1" '
+		{ kids[$2] = kids[$2] " " $1 }
+		END {
+			n = 0; q[++n] = root
+			while (n > 0) {
+				p = q[n--]; print p
+				m = split(kids[p], c, " ")
+				for (i = 1; i <= m; i++) if (c[i] != "") q[++n] = c[i]
+			}
+		}'
+}
+
+alive_any() {
+	for p in $1; do
+		[ -r "/proc/$p/stat" ] && return 0
+	done
+	return 1
+}
+
+stop_tree() {
+	tree=$(tree_of "$1")
+	kill -s TERM $tree 2>/dev/null || true
+	i=0
+	while [ "$i" -lt 30 ] && alive_any "$tree"; do
+		sleep 0.1
+		i=$((i + 1))
+	done
+	if alive_any "$tree"; then
+		kill -s KILL $tree 2>/dev/null || true
+	fi
+}
+
+# One builder at a time; a launcher takes the source path instead of waiting,
+# a build request waits — it has nothing else to do. The recorded pid lets a
+# builder killed outright (SIGKILL, OOM) leave a lock that the next one clears
+# instead of blocking every future build forever; the orphaned `bun run build`
+# that such a kill leaves behind is stopped first, so two compiles never write
+# the artifact (the build also renames into place atomically, so even a
+# survivor cannot leave a half-written binary).
+reap_orphan_build() {
+	orphan=$(cat "$build_child_file" 2>/dev/null || true)
+	rm -f "$build_child_file"
+	case $orphan in
+	'' | *[!0-9]*) return 0 ;;
+	esac
+	[ -r "/proc/$orphan/cmdline" ] || return 0
+	tr '\0' ' ' <"/proc/$orphan/cmdline" | grep -q 'bun run build' || return 0
+	echo "omp: stopping an orphaned build tree (pid $orphan) left by a killed launcher" >&2
+	stop_tree "$orphan"
+}
+
+lock_owner_live() {
+	owner=$(readlink "$lock_file" 2>/dev/null || true)
+	case $owner in
+	'' | *[!0-9]*) return 1 ;;
+	esac
+	[ -r "/proc/$owner/cmdline" ] && tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'scripts/omp '
+}
+
+# The lock is a symlink whose target is the owner's pid. `ln -s` either creates
+# it or fails, and the owner is readable the instant it exists — a `mkdir` lock
+# has a window where the directory exists with no pid inside, which another
+# launcher reads as a dead lock and clears.
+take_lock() {
+	ln -s "$$" "$lock_file" 2>/dev/null && return 0
+	# A directory here is the previous lock format; drop it and try again.
+	if [ -d "$lock_file" ]; then
+		rm -rf "$lock_file"
+		ln -s "$$" "$lock_file" 2>/dev/null && return 0
+	fi
+	# Liveness by cmdline, not `kill -0`: a zombie still answers `kill -0`, and a
+	# recycled pid would make the lock permanent. Only a live dev launcher
+	# (`scripts/omp ` — not `scripts/omp.ts`) holds this lock.
+	lock_owner_live && return 1
+	reap_orphan_build
+	rm -f "$lock_file"
+	ln -s "$$" "$lock_file" 2>/dev/null && return 0
+	return 1
+}
+
+# Stop a compile orphaned by a launcher that was killed outright *before* the
+# artifact is trusted — including on the fresh-artifact path, which never takes
+# the lock. Left alone, that orphan finishes later and renames a binary built
+# from an older tree over the current one while the recorded generation still
+# claims the newer tree, which is silent staleness rather than a failed build.
+if ! lock_owner_live; then
+	reap_orphan_build
+	rm -rf "$lock_file"
+fi
+
 # Fresh artifact for this generation: run it.
 if [ -x "$artifact" ] && [ "$recorded" = "$generation ok" ]; then
 	[ -n "$build_only" ] && exit 0
@@ -155,29 +250,6 @@ fi
 if [ "$recorded" = "$generation failed" ] && [ -z "$build_only" ]; then
 	launch_source "$@"
 fi
-
-# One builder at a time; a launcher takes the source path instead of waiting,
-# a build request waits — it has nothing else to do. The recorded pid lets a
-# builder killed outright (SIGKILL, OOM) leave a lock that the next one clears
-# instead of blocking every future build forever.
-take_lock() {
-	mkdir "$lock_dir" 2>/dev/null && { echo $$ > "$lock_dir/pid"; return 0; }
-	owner=$(cat "$lock_dir/pid" 2>/dev/null || true)
-	case $owner in
-	'' | *[!0-9]*) ;;
-	*)
-		# Liveness by cmdline, not `kill -0`: a zombie still answers `kill -0`,
-		# and a recycled pid would make the lock permanent. Only a live dev
-		# launcher (`scripts/omp ` — not `scripts/omp.ts`) holds this lock.
-		if [ -r "/proc/$owner/cmdline" ] && tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'scripts/omp '; then
-			return 1
-		fi
-		;;
-	esac
-	rm -rf "$lock_dir"
-	mkdir "$lock_dir" 2>/dev/null && { echo $$ > "$lock_dir/pid"; return 0; }
-	return 1
-}
 
 if ! take_lock; then
 	[ -z "$build_only" ] && launch_source "$@"
@@ -194,34 +266,37 @@ if ! take_lock; then
 fi
 build_child=
 stop_build() {
-	rm -rf "$lock_dir" 2>/dev/null || true
+	rm -f "$lock_file" 2>/dev/null || true
 	if [ -n "$build_child" ]; then
-		kill -s TERM "$build_child" 2>/dev/null || true
+		stop_tree "$build_child"
 	fi
+	rm -f "$build_child_file"
 	exit 143
 }
-trap 'rm -rf "$lock_dir" 2>/dev/null || true' 0
+trap 'rm -f "$lock_file" 2>/dev/null || true' 0
 trap stop_build 1 2 15
 
 echo "omp: building the compiled CLI (sources changed since the last build)..." >&2
 build_started=$(date +%s)
 (cd "$pkg_dir" && exec bun run build) >"$build_log" 2>&1 &
 build_child=$!
+echo "$build_child" >"$build_child_file"
 build_status=0
 wait "$build_child" || build_status=$?
 build_child=
+rm -f "$build_child_file"
 if [ "$build_status" -eq 0 ] && { [ ! -x "$artifact" ] || [ "$(stat -c %Y "$artifact" 2>/dev/null || stat -f %m "$artifact")" -lt "$build_started" ]; }; then
 	build_status=1
 fi
 if [ "$build_status" -eq 0 ]; then
 	echo "$generation ok" >"$state"
-	rm -rf "$lock_dir" 2>/dev/null || true
+	rm -f "$lock_file" 2>/dev/null || true
 	trap - 0 1 2 15
 	[ -n "$build_only" ] && exit 0
 	run_compiled "$@"
 fi
 
-rm -rf "$lock_dir" 2>/dev/null || true
+rm -f "$lock_file" 2>/dev/null || true
 trap - 0 1 2 15
 
 # A build killed by a signal was cancelled — by a newer `scripts/omp-aot`

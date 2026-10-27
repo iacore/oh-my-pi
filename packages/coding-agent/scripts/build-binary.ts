@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import * as fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { compileCodingAgent } from "./compile-binary";
@@ -76,6 +77,13 @@ async function main(): Promise<void> {
 		Bun.env.BUN_NO_CODESIGN_MACHO_BINARY !== "1";
 	const outName = crossBuild ? `omp-${crossBuild.id}` : "omp";
 	const outputPath = path.join(packageDir, "dist", outName);
+	// Compile into a sibling temp path and rename on success. The rename is
+	// atomic within the directory, so no builder — cancelled, SIGKILLed, or
+	// somehow overlapping another — can leave a half-written `dist/omp` for a
+	// launch to exec, and the previous artifact stays runnable until the new
+	// one lands whole.
+	const tempPath = `${outputPath}.tmp-${process.pid}`;
+	let landed = false;
 	// Generate inside the try so the finally always restores the empty checked-in
 	// placeholders (stats client archive, docs index) even on failure.
 	try {
@@ -88,7 +96,7 @@ async function main(): Promise<void> {
 		await compileCodingAgent({
 			repoRoot,
 			entrypoint: path.join(packageDir, "src", "cli.ts"),
-			outfile: outputPath,
+			outfile: tempPath,
 			transformersVersion,
 			native: crossBuild ?? { platform: process.platform, arch: process.arch },
 			target: crossBuild?.target,
@@ -104,10 +112,13 @@ async function main(): Promise<void> {
 				"-",
 				"--entitlements",
 				path.join(repoRoot, "scripts", "macos-entitlements.plist"),
-				outputPath,
+				tempPath,
 			]);
 		}
+		await fs.rename(tempPath, outputPath);
+		landed = true;
 	} finally {
+		if (!landed) await fs.rm(tempPath, { force: true });
 		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats:reset"]);
 	}
 }
