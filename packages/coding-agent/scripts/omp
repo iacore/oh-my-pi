@@ -17,6 +17,13 @@
 # AoT builder `scripts/omp-aot` drives it so the expensive compile happens
 # ahead of a launch instead of on top of one.
 #
+# Ctrl-C while a launch is waiting for its build means "stop making me wait",
+# not "throw the compile away": the compile runs in a detached copy of this
+# script in build-request mode (its own session, so the terminal's SIGINT never
+# reaches it), the interrupt takes the launcher off the wait, and the launch
+# runs from source at once while the artifact finishes in the background. A
+# SIGTERM (how `scripts/omp-aot` cancels the build in flight) still drops it.
+#
 # The compiled binary embeds its own runtime and autoloads no bunfig/tsconfig/
 # .env, so it needs neither the empty-directory dance below nor the preload
 # shim; the source path still does.
@@ -54,6 +61,9 @@ timing_preload=$scripts_dir/../../utils/src/module-timer.ts
 
 artifact=$pkg_dir/dist/omp
 build_log=$pkg_dir/dist/omp-build.log
+# A detached builder's own output: the terminal may already be running omp when
+# it finishes, so nothing it prints may reach the terminal.
+launch_log=$pkg_dir/dist/omp-launch.log
 lock_file=$pkg_dir/dist/.omp-build.lock # symlink whose target is the owner pid
 build_child_file=$pkg_dir/dist/.omp-build-child.pid
 state=$pkg_dir/dist/omp-launch.state
@@ -251,8 +261,62 @@ if [ "$recorded" = "$generation failed" ] && [ -z "$build_only" ]; then
 	launch_source "$@"
 fi
 
+# A build this launcher does not own: `setsid -w` runs the build-request copy of
+# this script in a session of its own and waits for it, so the terminal's Ctrl-C
+# reaches only the launcher. Without `setsid` (macOS) a build cannot outlive the
+# interrupt, and Ctrl-C keeps its old meaning of cancelling it.
+detached_build=
+setsid -w true >/dev/null 2>&1 && detached_build=1
+
+build_child=
+stop_build() {
+	# A cancellation drops the build for good (omp-aot's SIGTERM, a closed
+	# terminal); a builder left behind by Ctrl-C keeps its own lock instead.
+	if [ -n "$build_child" ]; then
+		stop_tree "$build_child"
+	fi
+	rm -f "$build_child_file"
+	exit 143
+}
+background_build() {
+	if [ -z "$detached_build" ] || [ -z "$build_child" ]; then
+		stop_build
+	fi
+	echo "omp: build continues in the background (pid $build_child); running from source" >&2
+	launch_source "$@"
+}
+
+if [ -z "$build_only" ]; then
+	# A live builder on this checkout means the compile is already in flight:
+	# run from source instead of queueing a launch behind the artifact.
+	lock_owner_live && launch_source "$@"
+	echo "omp: building the compiled CLI (sources changed since the last build)..." >&2
+	: >"$launch_log"
+	if [ -n "$detached_build" ]; then
+		setsid -w env OMP_BUILD_ONLY=1 sh "$self" </dev/null >>"$launch_log" 2>&1 &
+	else
+		env OMP_BUILD_ONLY=1 sh "$self" </dev/null >>"$launch_log" 2>&1 &
+	fi
+	build_child=$!
+	trap 'background_build "$@"' 2
+	trap 'stop_build' 1 15
+	build_status=0
+	wait "$build_child" || build_status=$?
+	build_child=
+	trap - 1 2 15
+	if [ "$build_status" -eq 0 ]; then
+		run_compiled "$@"
+	fi
+	echo "omp: build failed; running from source" >&2
+	tail -n 15 "$build_log" >&2 || true
+	launch_source "$@"
+fi
+
+# Build request: `scripts/omp-aot` drives this mode, and the launch path above
+# spawns it. This process, not its caller, owns the lock and the recorded
+# generation, so a launcher that walks away cannot leave a build holding a lock
+# nobody releases or a generation nobody records.
 if ! take_lock; then
-	[ -z "$build_only" ] && launch_source "$@"
 	echo "omp: another build holds the lock; waiting for it..." >&2
 	waited=0
 	while ! take_lock; do
@@ -264,18 +328,10 @@ if ! take_lock; then
 		waited=$((waited + 1))
 	done
 fi
-build_child=
-stop_build() {
-	rm -f "$lock_file" 2>/dev/null || true
-	if [ -n "$build_child" ]; then
-		stop_tree "$build_child"
-	fi
-	rm -f "$build_child_file"
-	exit 143
-}
+# The EXIT trap owns the lock for the build-request path: `stop_build` above
+# clears the build tree and lets this one release it.
 trap 'rm -f "$lock_file" 2>/dev/null || true' 0
 trap stop_build 1 2 15
-
 echo "omp: building the compiled CLI (sources changed since the last build)..." >&2
 build_started=$(date +%s)
 (cd "$pkg_dir" && exec bun run build) >"$build_log" 2>&1 &
@@ -292,8 +348,7 @@ if [ "$build_status" -eq 0 ]; then
 	echo "$generation ok" >"$state"
 	rm -f "$lock_file" 2>/dev/null || true
 	trap - 0 1 2 15
-	[ -n "$build_only" ] && exit 0
-	run_compiled "$@"
+	exit 0
 fi
 
 rm -f "$lock_file" 2>/dev/null || true
@@ -310,9 +365,5 @@ fi
 
 echo "$generation failed" >"$state"
 tail -n 15 "$build_log" >&2 || true
-if [ -n "$build_only" ]; then
-	echo "omp: build failed" >&2
-	exit 1
-fi
-echo "omp: build failed; running from source" >&2
-launch_source "$@"
+echo "omp: build failed" >&2
+exit 1
