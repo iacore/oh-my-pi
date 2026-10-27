@@ -545,3 +545,27 @@ session showed "Bash Listing the files". Fixed on `custom` as `b33e30feee` with
 - **If the maintainer wants another shape**: the merge lives at the one helper;
   an alternative is to have the agent emit `i` back into the event args, which
   would leak harness metadata into tool execution — do not.
+
+<!-- item: managed-skills-symlink-root-pr-17201 state=blocked owner=- blocked=upstream -->
+## A symlinked managed-skills root: upstreamed as PR #17201
+
+`manage_skill`/`learn` write to `getManagedSkillsDir()`, which is
+`path.join(getAgentDir(), "managed-skills")` with no setting, so the store can only
+be shared with the vault (`~/meta/notes/omp-skills`) through a symlink. The root
+guard rejected any symlinked root, so every write failed there. Landed on `custom`
+as `c024915202`: a root that resolves to a directory is accepted, a broken link or a
+link to a non-directory is refused, and the per-skill symlink/hard-link guards are
+unchanged.
+
+- **Upstream**: [can1357/oh-my-pi#17201](https://github.com/can1357/oh-my-pi/pull/17201),
+  branch `fix/managed-skills-symlink-root-pr` in `~/.omp/wt/managed-symlink-pr-3794ff7875`
+  from `origin/main` `3794ff7875`, one commit (fix + test + CHANGELOG entry),
+  `MERGEABLE`/`CLEAN`.
+- **Verification**: `test/autolearn-managed-skills.test.ts` (38 with the discovery
+  file) passes in both trees; `check:types`, oxlint, oxfmt clean against the matching
+  `@oh-my-pi/pi-natives-linux-x64@18.13.1` addon; a probe through the live symlink
+  wrote `symlink-root-probe` into the vault and deleted it again.
+- **Local state**: `~/.omp/agent/managed-skills` is a symlink to the vault; the nine
+  skills it held were moved into `~/meta/notes/omp-skills/`. If upstream takes a
+  different shape (for example a setting for the store path), the atomic writes in
+  `writeManagedSkill` are what a setting would have to preserve.
