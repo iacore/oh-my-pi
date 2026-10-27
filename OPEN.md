@@ -1,5 +1,27 @@
 # Open items — omp-custom
 
+<!-- item: doas-shell-mode-interactive-pty state=blocked owner=- blocked=upstream -->
+## The user shell's `!doas` runs on the interactive terminal — landed on `custom` (`e31af465eb`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-28)
+
+`!doas …` in the TUI died with `doas: Authentication failed` even after the bash
+tool learned to allocate a terminal: the `!` path runs on the headless PTY (or
+the embedded shell for bash), which forwards output but no keyboard input, so a
+password prompt had nowhere to go.
+
+- **Fix**: `handleBashCommand` asks `bashNeedsAuthTerminal` and passes the tool
+  UI context to `AgentSession.executeBash` as `interactivePty`; the bash runner
+  runs that call through `runInteractiveBashPty`, keeping the `user_bash` hook,
+  abort controller, result recording and direnv preflight. Ordinary `!` commands
+  keep the transcript PTY replay, and `PI_NO_PTY` or a missing UI leaves the
+  headless path in place.
+- **Verified**: `test/agent-session-user-shortcut-hooks.test.ts` on both trees
+  (routing test plus the hook cases), `check:types` clean. A tmux smoke of the
+  PR worktree typed `!doas true` and the Console overlay showed
+  `doas (user@17) password:` with input forwarded, instead of the old failure.
+- **Custom is 1104 commits behind `origin/main`**: the fix landed as an
+  integration commit off `custom`; the PR branch carries the changelog entry,
+  `custom` does not.
+
 <!-- item: tern-agent-banners-honor-notify-settings state=blocked owner=- blocked=upstream -->
 ## Tern's agent banners honor `ask.notify`/`completion.notify` — landed on `custom` (`4d64deb907`), PR [#17227](https://github.com/can1357/oh-my-pi/pull/17227) open upstream (2026-10-28)
 
