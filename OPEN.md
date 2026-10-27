@@ -1,5 +1,29 @@
 # Open items — omp-custom
 
+<!-- item: job-glance-meter-whole state=blocked owner=- blocked=upstream -->
+## A job glance keeps the meter's whole — landed on `custom` (`886392f50a`), PR [#17226](https://github.com/can1357/oh-my-pi/pull/17226) open upstream (2026-10-28)
+
+A running job's card and the HUD pill read `140` while the progress bar under
+them read `140/190`: the authored spec pointed `headline` at the same field the
+`meter` counts, and `jobWidgetGlance` returned the headline alone, so every
+view built on the glance — the Tern job card, the HUD pill, the ANSI status
+line, the tooltip summary — dropped the total.
+
+- **Fix**: `jobWidgetGlance` reads a meter's own figure when the headline's
+  leading number equals it (`meterWhole`, one regex on both figures), keeping
+  the headline's label and trend; a headline of another quantity still wins, so
+  `0.842 best` beside a `7/9 trials` meter is unchanged.
+- **Verified**: `packages/tui` `test/job-widget.test.ts` 17/17 on both trees,
+  including the restated numerator and the unrelated headline; `check:types`,
+  `oxlint` and `oxfmt --check` clean. A rendered smoke of a build-shaped tile
+  (`bun -e` on `renderJobTileLines`) now prints `flameshot build bg_1 … 140/190`
+  over the `140/190` bar.
+- **Cost**: `custom` is 1104 commits behind `origin/main`, so the fix landed as
+  an integration commit off `custom` (`~/.omp/wt/integrate-glance-af8e5fd4d6`)
+  rather than by merging the main-based branch; the PR branch
+  (`~/.omp/wt/job-glance-meter-a70f001c43`) carries the changelog entry, `custom`
+  does not.
+
 <!-- item: autolearn-policy-moved-to-extension state=blocked owner=- blocked=human -->
 ## Auto-learn policy moved out of core into an extension (2026-10-27)
 
