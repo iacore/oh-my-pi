@@ -1,5 +1,39 @@
 # Open items — omp-custom
 
+<!-- item: tern-agent-banners-honor-notify-settings state=blocked owner=- blocked=upstream -->
+## Tern's agent banners honor `ask.notify`/`completion.notify` — landed on `custom` (`4d64deb907`), PR [#17227](https://github.com/can1357/oh-my-pi/pull/17227) open upstream (2026-10-28)
+
+With Ask Notification and Completion Notification set to `off`, Tern still raised
+a banner and a needs-attention inbox entry whenever an `ask` question waited and
+whenever a turn finished. The toast had gone; the banner had not, because Tern
+builds it from the OSC 7501 Program Status Protocol record omp publishes, not
+from the OSC 9/99 notification the settings gated.
+
+- **Fix**: `setProgramStatusFilter` in `utils/run-status.ts` gates the record per
+  state, and the interactive UI installs a filter that drops `blocked` while
+  `ask.notify` is off and `done` while `completion.notify` is off, re-applying
+  live for both settings. A dropped state clears the record instead of reporting
+  it, so the pane keeps its working indicator. `error` stays reported:
+  `error.notify` defaults to off, so gating it would remove Tern's failure
+  indicator for everyone.
+- **Verified**: `test/run-status.test.ts` 7/7 (two new cases: a rejected state
+  clears and is re-published when the gate accepts it, and `working`/`idle`/
+  `error` survive a rejected `done`); `check:types`, `oxlint` and `oxfmt --check`
+  clean in both trees. Captured pty streams with `TERM_PROGRAM=tern` and this
+  machine's config (all three notify settings off) carry
+  `state=idle` → `state=working` → `state=clear` and no `state=done`, on the
+  source run and on the installed `omp`; the same capture with the three
+  settings on still ends `state=done`.
+- **Not covered by a live run**: the `blocked` half is unit-tested only — no
+  capture drove a real `ask` prompt; and Tern's banner itself wasn't observed,
+  only the record's absence, because the run was on a `script` pty rather than
+  in Tern's own window.
+- **Custom is far behind `origin/main`**: the fix landed as an integration commit
+  off `custom` (`~/.omp/wt/integrate-7501-6de17ef78d`, cherry-pick with three
+  conflicts resolved by hand — the `run-status` import, the init site, and the
+  test titles); the PR branch (`/var/tmp/wt/notif-7501-a70f001c43`) carries the
+  changelog entry, `custom` does not.
+
 <!-- item: job-glance-meter-whole state=blocked owner=- blocked=upstream -->
 ## A job glance keeps the meter's whole — landed on `custom` (`886392f50a`), PR [#17226](https://github.com/can1357/oh-my-pi/pull/17226) open upstream (2026-10-28)
 
