@@ -223,7 +223,12 @@ import { resumeCommand } from "../utils/resume-command";
 import { getSessionAccentAnsi, getSessionAccentHex } from "@oh-my-pi/pi-tui/theme/session-color";
 import { messageHasDisplayableThinking } from "@oh-my-pi/pi-tui/chat/thinking-display";
 import type { TokenRateMeter } from "../utils/token-rate";
-import { disposeProgramStatus, initProgramStatus, setProgramStatusEnabled } from "../utils/run-status";
+import {
+	disposeProgramStatus,
+	initProgramStatus,
+	setProgramStatusEnabled,
+	setProgramStatusFilter,
+} from "../utils/run-status";
 import {
 	disposeTerminalTitleState,
 	initTerminalTitleState,
@@ -355,7 +360,9 @@ import { materializeImageChipLinks, UiHelpers } from "./utils/ui-helpers";
 
 import {
 	askTimeoutMs,
+	cfgAskNotify,
 	cfgAutocompleteMaxVisible,
+	cfgCompletionNotify,
 	cfgComposerPredictions,
 	cfgComposerShape,
 	cfgComposerTokenRate,
@@ -461,6 +468,8 @@ const cfgLiveUiSettings = combine({
 	"display.hideToolOutputDetails": cfgDisplayHideToolOutputDetails,
 	"terminal.showImages": cfgTerminalShowImages,
 	"terminal.programStatus": cfgTerminalProgramStatus,
+	"ask.notify": cfgAskNotify,
+	"completion.notify": cfgCompletionNotify,
 	hideThinkingBlock: cfgHideThinkingBlock,
 	proseOnlyThinking: cfgProseOnlyThinking,
 	expandThinkingBlocks: cfgExpandThinkingBlocks,
@@ -2463,7 +2472,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		setTerminalTitleStateEnabled(cfgTuiTitleState.get(this.settings));
 		setTerminalTitleSpinnerStyle(cfgTuiTitleSpinner.get(this.settings));
 		initProgramStatus();
-		setProgramStatusEnabled(cfgTerminalProgramStatus.get(this.settings));
+		this.#applyProgramStatusSettings();
 		setTerminalSessionSource({
 			file: () => this.sessionManager.getSessionFile(),
 			cwd: () => this.sessionManager.getCwd(),
@@ -3660,6 +3669,24 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
+	 * Publish the run status over OSC 7501 (`terminal.programStatus`) minus the
+	 * states the user silenced: a terminal that speaks the protocol raises its own
+	 * banner for a `blocked` run asking for input and for a `done` turn, so those
+	 * two records are the terminal's copy of the `ask.notify` and
+	 * `completion.notify` notifications and are withdrawn when those are off. The
+	 * filter goes in before the switch: `setProgramStatusEnabled(true)` re-publishes
+	 * the current status under whatever gate is installed.
+	 */
+	#applyProgramStatusSettings(): void {
+		setProgramStatusFilter(status => {
+			if (status.state === "blocked") return cfgAskNotify.get(this.settings) !== "off";
+			if (status.state === "done") return cfgCompletionNotify.get(this.settings) !== "off";
+			return true;
+		});
+		setProgramStatusEnabled(cfgTerminalProgramStatus.get(this.settings));
+	}
+
+	/**
 	 * Apply live UI side effects for settings changed through any path (`/settings`,
 	 * `cfg://`, `settings.set()`, on-disk reload). One coalesced {@link cfgLiveUiSettings}
 	 * listener, so a bulk reload rebuilds the transcript at most once.
@@ -3812,7 +3839,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (any("tui.titleState")) setTerminalTitleStateEnabled(cfgTuiTitleState.get(this.settings));
 		if (any("tui.titleSpinner")) setTerminalTitleSpinnerStyle(cfgTuiTitleSpinner.get(this.settings));
-		if (any("terminal.programStatus")) setProgramStatusEnabled(cfgTerminalProgramStatus.get(this.settings));
+		if (any("terminal.programStatus", "ask.notify", "completion.notify")) this.#applyProgramStatusSettings();
 
 		if (
 			any(
