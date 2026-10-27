@@ -1,5 +1,28 @@
 # Open items — omp-custom
 
+<!-- item: history-recall-cursor-at-end state=blocked owner=- blocked=upstream -->
+## A recalled prompt opens at its end — landed on `custom` (`5f32c3d9e3`), PR [#17233](https://github.com/can1357/oh-my-pi/pull/17233) open upstream (2026-10-28)
+
+ArrowUp recalled a multi-row history entry with the caret on its first line, so
+typing continued at the top of an old prompt instead of after it. Up also
+anchored a wrapped single-row entry at its top.
+
+- **Fix**: `Editor#navigateHistory` no longer passes a directional
+  `HistoryCursorAnchor`; every recall opens at the end of the last line, the same
+  anchor `setText` and the first-edit path use. Up walks the recalled entry's own
+  rows and only an Up from its first visual line steps to older history. The
+  anchor type and `#lastLayoutWidth` (its only reader) are removed.
+- **Verified**: `packages/tui` `editor`, `editor-vim`, `custom-editor` and
+  `editor-atoms` tests 361/361 on both trees; the coding-agent
+  `custom-editor-draft` and `input-controller-large-paste` recall tests 33/33;
+  `tsgo`, `oxlint` and `oxfmt --check` clean. A component smoke pressed real
+  `\x1b[A` bytes and read `cursor {line:1,col:11}` with the native `editor` prop
+  `cursor:22` — the end of `first line\nsecond line`.
+- **Custom is 1104 commits behind `origin/main`**: the fix landed as an
+  integration commit off `custom` (`~/.omp/wt/integrate-history-end-3c51f81c21`);
+  the PR branch (`~/.omp/wt/history-end-a70f001c43`) carries the changelog
+  entry, `custom` does not.
+
 <!-- item: doas-shell-mode-interactive-pty state=blocked owner=- blocked=upstream -->
 ## The user shell's `!doas` runs on the interactive terminal — landed on `custom` (`e31af465eb`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-28)
 
