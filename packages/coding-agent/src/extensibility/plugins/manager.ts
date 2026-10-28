@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
 	getPluginsDir,
@@ -10,6 +9,7 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
+	mkdtempInTempRoot,
 	normalizePathForComparison,
 } from "@oh-my-pi/pi-utils";
 import { JSONC } from "bun";
@@ -377,7 +377,7 @@ export class PluginManager {
 			throw err;
 		}
 
-		const backupRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-plugin-backup-"));
+		const backupRoot = await mkdtempInTempRoot("plugin-backup-");
 		const backupPath = path.join(backupRoot, "package");
 		await fs.promises.cp(packagePath, backupPath, { recursive: true, verbatimSymlinks: true });
 		return { actualName, packagePath, backupRoot, backupPath };

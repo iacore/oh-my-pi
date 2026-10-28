@@ -1,6 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import * as os from "node:os";
-import * as path from "node:path";
 
 import type {
 	Application,
@@ -27,6 +25,7 @@ import type {
 	OpenedApplication,
 	PointerOptions,
 } from "@oh-my-pi/pi-natives";
+import { tempSubpath } from "@oh-my-pi/pi-utils";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { Snowflake } from "@oh-my-pi/pi-utils/snowflake";
 import { JsRuntime, type RuntimeHooks } from "../../eval/js/shared/runtime";
@@ -597,7 +596,7 @@ async function emitScreenshot(
 	frame: DesktopCapture,
 	options?: ScreenshotOptions,
 ): Promise<ScreenshotResult> {
-	const destination = path.join(os.tmpdir(), `omp-computer-${Snowflake.next()}.png`);
+	const destination = tempSubpath(`computer-${Snowflake.next()}.png`);
 	await Bun.write(destination, frame.data);
 	throwIfAborted(context.signal);
 	const result: ScreenshotResult = {

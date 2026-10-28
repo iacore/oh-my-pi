@@ -7,10 +7,9 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 
-import { isEnoent, logger, pathIsWithin } from "@oh-my-pi/pi-utils";
+import { getTempRoot, isEnoent, logger, pathIsWithin } from "@oh-my-pi/pi-utils";
 import { expandTilde } from "../../../tools/path-utils";
 import { normalizePluginRuntimeConfig, writePluginRuntimeConfig } from "../runtime-config";
 import type { PluginRuntimeConfig, PluginRuntimeState } from "../types";
@@ -339,7 +338,7 @@ export class MarketplaceManager {
 		const { dir: sourcePath, tempCloneRoot } = await resolvePluginSource(pluginEntry, {
 			marketplaceClonePath,
 			catalogMetadata: catalog.metadata,
-			tmpDir: os.tmpdir(),
+			tmpDir: getTempRoot(),
 		});
 
 		// The cache is keyed by marketplace/plugin/version and shared across scopes,

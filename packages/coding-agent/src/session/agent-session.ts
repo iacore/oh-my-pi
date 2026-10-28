@@ -15,7 +15,6 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isPromise } from "node:util/types";
@@ -105,6 +104,7 @@ import {
 	prompt,
 	Snowflake,
 	stringProperty,
+	tempSubpath,
 	toError,
 	withTimeout,
 	withFileLock,
@@ -10666,7 +10666,7 @@ export class AgentSession implements SettingsScope {
 		try {
 			this.#titleGenerationAbortController.abort();
 			if (!this.#isDisposed) this.#titleGenerationAbortController = new AbortController();
-				for (const controller of this.#usagePreflightAbortControllers) controller.abort();
+			for (const controller of this.#usagePreflightAbortControllers) controller.abort();
 			for (const controller of this.#imageDescriptionAbortControllers) controller.abort(options?.reason);
 			this.abortRetry();
 			this.#promptGeneration++;
@@ -10709,7 +10709,7 @@ export class AgentSession implements SettingsScope {
 			// Do not let abort-and-replace callers start a new prompt before that cleanup
 			// finishes, or the replacement turn's events are neither forwarded nor persisted.
 			await manualCompactionCleanup;
-				await this.#goalRuntime.onTaskAborted({ reason: options?.goalReason ?? "interrupted" });
+			await this.#goalRuntime.onTaskAborted({ reason: options?.goalReason ?? "interrupted" });
 			// Clear prompt-in-flight state: waitForIdle resolves when the agent loop's finally
 			// block runs, but nested prompt setup/finalizers may still be unwinding. Without this,
 			// a subsequent prompt() can incorrectly observe the session as busy after an abort.
@@ -14319,7 +14319,7 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/**
-	 * Write `/dump all` to an auto-named zip in `os.tmpdir()`: `session.md` (the
+	 * Write `/dump all` to an auto-named zip in the omp temp root: `session.md` (the
 	 * {@link formatSessionAsText} transcript), `llm-request.json` (the
 	 * {@link dumpLlmRequestToTmpDir} payload), and one `subagents/<path>.md` per
 	 * persisted subagent transcript stored next to the session file, nested
@@ -14377,13 +14377,13 @@ export class AgentSession implements SettingsScope {
 			entries.push([`subagents/${key}.md`, `${text}\n`]);
 			subagentCount++;
 		}
-		const filePath = path.join(os.tmpdir(), `omp-dump-${Snowflake.next()}.zip`);
+		const filePath = tempSubpath(`dump-${Snowflake.next()}.zip`);
 		await writeArchive(filePath, "zip", entries);
 		return { path: filePath, files: entries.map(([name]) => name), subagentCount, subagentError };
 	}
 
 	/**
-	 * Write `/dump anon` to an auto-named zip in `os.tmpdir()`: `session.jsonl`
+	 * Write `/dump anon` to an auto-named zip in the omp temp root: `session.jsonl`
 	 * and one `subagents/<path>.jsonl` per persisted subagent, anonymized with one
 	 * shared token table (see {@link anonymizeSessionTranscripts}).
 	 *
@@ -14398,7 +14398,7 @@ export class AgentSession implements SettingsScope {
 			sessionFile: this.sessionManager.getSessionFile(),
 			malformedRecords: this.sessionManager.loadedMalformedRecords,
 		});
-		const filePath = path.join(os.tmpdir(), `omp-dump-anon-${Snowflake.next()}.zip`);
+		const filePath = tempSubpath(`dump-anon-${Snowflake.next()}.zip`);
 		await writeArchive(filePath, "zip", result.files);
 		return {
 			path: filePath,
@@ -14413,7 +14413,7 @@ export class AgentSession implements SettingsScope {
 
 	/**
 	 * Dump the current session's LLM-facing request context as JSON to a
-	 * auto-named file in `os.tmpdir()`. This is the synchronous
+	 * auto-named file in the omp temp root. This is the synchronous
 	 * `convertToLlm`-boundary snapshot — system prompt, tools (wire schemas),
 	 * thinking/service tier, and converted messages — with no network round-trip
 	 * and no arming flag, so advisor/side requests cannot intercept it.
@@ -14426,7 +14426,7 @@ export class AgentSession implements SettingsScope {
 	async dumpLlmRequestToTmpDir(): Promise<string | undefined> {
 		const messages = this.messages;
 		if (messages.length === 0) return undefined;
-		const filePath = path.join(os.tmpdir(), `omp-llm-request-${Snowflake.next()}.json`);
+		const filePath = tempSubpath(`llm-request-${Snowflake.next()}.json`);
 		await Bun.write(filePath, await this.#formatLlmRequestJson(messages));
 		return filePath;
 	}
