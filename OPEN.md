@@ -711,3 +711,27 @@ unchanged.
   skills it held were moved into `~/meta/notes/omp-skills/`. If upstream takes a
   different shape (for example a setting for the store path), the atomic writes in
   `writeManagedSkill` are what a setting would have to preserve.
+
+<!-- item: temp-root-under-tmp-omp-17274 state=blocked owner=- blocked=upstream -->
+## omp's temp paths under one `<tmpdir>/omp`: upstreamed as PR #17274
+
+omp wrote `omp-local`, `omp-shell-snapshots-<uid>`, `omp-sshots-*`, `omp-dump-*`,
+`omp-uploads-*` and the rest directly into the OS temp dir, so a crash or a killed test
+run left them beside everyone else's files. The whole set now lives under
+`<os temp>/omp/` with the `omp-` prefix dropped from each leaf; `pi-utils` gained
+`getTempRoot()`, `tempSubpath()`, `mkdtempInTempRoot()` and `mkdtempInTempRootSync()`.
+Landed on `custom` as `ef1e350029`, an integration commit off `custom` carrying the
+source and test diff without the CHANGELOG entry.
+
+- **Upstream**: [can1357/oh-my-pi#17274](https://github.com/can1357/oh-my-pi/pull/17274),
+  branch `tmp/omp-subdir` in `~/.omp/wt/tmp-omp-subdir-c3b645cb27` from `origin/main`
+  `c3b645cb27`, one commit (source + tests + both CHANGELOG entries).
+- **Verification**: logger-contract, dirs, shell-snapshot, local-protocol,
+  plan-mode-guard-local, structured-subagent, computer, browser-open-options and
+  browser-upload-contents suites pass in both trees; `check:types` (workspace), oxlint
+  and oxfmt clean; a throwaway script over `getTempRoot()`, `mkdtempInTempRoot()`,
+  `tempSubpath()` and `resolveLocalRoot()` produced paths only under `/tmp/omp` (mode
+  0700) and no new `omp*` entry at the temp dir's top level.
+- **Not moved**: the pre-existing `/tmp/omp-*` and `/tmp/pi-*` directories were left in
+  place, on instruction; clearing them is the user's call, and `/tmp/omp` is where new
+  paths land.
