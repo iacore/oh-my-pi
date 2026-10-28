@@ -622,6 +622,27 @@ Open questions left in the threads: the 60 s one-shot settle drain (#15460), whe
 `pty: true` + `async: true` pair should error (#16103), and whether the strip offers a clear for an
 unavailable role (#14271). Merge order matters for #16103: it duplicates `custom`'s `0303e0f488`.
 
+<!-- item: thinking-badge-speed-clamp state=blocked owner=01a18342-c1b6-77fb-b290-90775e5567a6 blocked=upstream -->
+## Thinking badge no longer capped at 200 tok/s — on `custom` (`645353fc7c`), PR #17306 open (2026-10-28)
+
+`SPEED_MAX` exists to saturate the accent-color fade, but `Math.min` also clamped the printed
+number and every observation, so a stream faster than 200 tok/s read exactly `200.0 toks/s` and the
+average of clamped bursty samples usually sat under it (176 was typical). The gauge now sums token
+deltas over the spans that carried them. Waiting on [can1357/oh-my-pi#17306](https://github.com/can1357/oh-my-pi/pull/17306);
+`custom` carries the same source + test as integration commit `645353fc7c`.
+
+<!-- item: lithosai-decode-regression state=blocked owner=01a18342-c1b6-77fb-b290-90775e5567a6 blocked=external -->
+## lithosai DeepSeek decode rate stepped down on 10-24 and partly recovered on 10-27 (2026-10-28)
+
+Measured over the local session corpus with `scripts/session-stats/speed.py` (median decode tok/s,
+`usage.output / (duration - ttft)`, deduped, decode window ≥250 ms): `deepseek-ai/DeepSeek-V4.1-Flash`
+ran 509-546 on 10-17..10-22, 233-247 on 10-24..10-26, and 307-309 on 10-27..10-28. TTFT p50 rose from
+1.7-2.0 s to 2.4-2.7 s over the same days, at a fixed 60-120k context band and a flat 0.99 cache-read
+fraction. Not a client artifact: an independent SSE client measured 295/314 (base), 420/379 (ultra)
+and 490 (`-fast`) tok/s today, and on 10-16 the same harness measured base 510 against `-fast` 274 —
+the two ids' relative speeds have flipped, which a harness-wide bias cannot produce. The user has
+emailed support@lithosai.com; this waits on their reply, not on any change here.
+
 <!-- item: omp-desktop-toasts-disabled-for state=done owner=- blocked=- -->
 ## omp desktop toasts disabled for every future session (2026-10-23)
 
