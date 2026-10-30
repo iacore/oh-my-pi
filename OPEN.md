@@ -1,5 +1,28 @@
 # Open items — omp-custom
 
+<!-- item: cd-tool-relocates-session-cwd state=blocked owner=- blocked=upstream -->
+## A `cd` tool relocates the session's working directory — on `custom` (`34a52b951d`), PR [#17441](https://github.com/can1357/oh-my-pi/pull/17441) open upstream (2026-10-30)
+
+A session told to work inside a worktree or another project could not make the
+change itself: `bash`'s `cwd` argument moves one command, `/move` is interactive,
+and a `cd` inside a command dies with the shell. `cd` now moves the session.
+
+- **Scope**: session file and artifacts, process cwd, project settings, memory
+  scope, plugin roots, title prompt, skills and slash commands all follow, so
+  later relative paths and subagents resolve in the new directory. All-or-nothing
+  with rollback; `exclusive` so two moves never interleave in one batch.
+- **Shared code**: `session/cwd-relocation.ts`, now used by the headless `/move`
+  command, which carried its own copy, and by `AgentSession.changeWorkingDirectory`.
+- **Custom-only side effect**: `InteractiveModeContext` sets `AgentSession.onCwdChanged`
+  to repaint the status line, terminal title, and todo panel after a tool-driven
+  move. That hook is part of the PR too.
+- **Verified** on `custom`: `test/cd-tool.test.ts` (8), plus a scratch
+  `createAgentSession` run that moved `/tmp/.../` into `proj/`, saw the session
+  file relocate, `process.cwd()` follow, and a later relative `read` resolve;
+  `tsgo` clean; `scripts/omp-aot` built `dist/omp` with the tool in it.
+- **Residual**: the `/btw` move gate is TUI-only state, so a tool-driven move
+  does not pass through it.
+
 <!-- item: tern-fork-lands-in-a-new-tab state=done owner=- blocked=- -->
 ## `/fork` inside a Tern pane lands in a tab of its own — on `custom` (`182f1d74bf`, 2026-10-30)
 
