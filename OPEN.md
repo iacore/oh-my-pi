@@ -1,5 +1,33 @@
 # Open items — omp-custom
 
+<!-- item: tern-fork-lands-in-a-new-tab state=done owner=- blocked=- -->
+## `/fork` inside a Tern pane lands in a tab of its own — on `custom` (`182f1d74bf`, 2026-10-30)
+
+The Tern fork (`87c8df3ac2`) asked Tern's `fork` op for `omp --fork` and took
+the pane Tern opened beside the original. The fork now ends in a tab, which is
+what a fork is for: the original session keeps its pane and the fork gets one of
+its own.
+
+- **How**: the op has no placement of its own, and the daemon protocol lists
+  only `browser` and `fork`, so omp moves the returned block with the CLI —
+  `tern move BLOCK new-tab` (`src/tools/browser/tern/move.ts`). A move that
+  fails leaves the fork as the pane Tern opened, says so, and never falls back
+  to an in-place fork.
+- **The CLI's syntax is not its help's**: `tern move BLOCK tab N|new-tab` reads
+  as if `new-tab` were a tab number in the `tab` form, and `tern move BLOCK tab
+  new-tab` answers `no tab number new-tab` (exit 2). The keyword stands alone:
+  `tern move BLOCK new-tab`.
+- **Verified** in an isolated offscreen window (Tern 0.9.8, private daemon and
+  Xvfb, `tern-window.sh`): `omp` in a tab, one prompt, `/fork` → the rail shows
+  `Session forked into a new tab`, the original tab keeps the original block,
+  and the new tab runs `omp --fork <session>.jsonl` with the inherited
+  transcript. Unit tests: `test/modes/controllers/fork-command.test.ts` (18) and
+  `test/tools/browser-tern-move.test.ts`; `tsgo`, `oxlint`, `oxfmt` clean.
+- **Residual**: the fork is briefly a pane beside the original before the move,
+  because Tern places it. A Tern that let `fork` name a tab would remove the
+  round trip.
+- **Custom-only**, like the feature it adjusts: no PR, no changelog entry.
+
 <!-- item: history-recall-cursor-at-end state=blocked owner=- blocked=upstream -->
 ## A recalled prompt opens at its end — landed on `custom` (`5f32c3d9e3`), PR [#17233](https://github.com/can1357/oh-my-pi/pull/17233) open upstream (2026-10-28)
 
