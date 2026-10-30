@@ -2257,6 +2257,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			get cwd() {
 				return sessionManager.getCwd();
 			},
+			changeWorkingDirectory: newCwd => {
+				if (!hasSession) return Promise.reject(new Error("The session is not ready to change directory yet"));
+				return session.changeWorkingDirectory(newCwd);
+			},
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			toolRegistry,
@@ -5247,7 +5251,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				parentMnemopiSessionState: options.parentMnemopiSessionState,
 			});
 		};
-
 
 		// Sessions that will need the memory tools start the backend inline; the
 		// rest keep startup in the background to preserve the startup profile.
