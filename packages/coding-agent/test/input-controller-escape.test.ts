@@ -766,6 +766,36 @@ describe("InputController escape behavior", () => {
 		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
 	});
 
+	it("hands the interrupted prompt back when Esc stops the live turn under the working row", () => {
+		const { ctx, editor, spies } = createContext();
+		ctx.loadingAnimation = {} as InteractiveModeContext["loadingAnimation"];
+		(ctx.session as { getInterruptiblePrompt?: () => { text: string } }).getInterruptiblePrompt = () => ({
+			text: "fix the failing test",
+		});
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("fix the failing test");
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+	});
+
+	it("restores the interrupted prompt ahead of messages queued behind it", () => {
+		const { ctx, editor, spies } = createContext();
+		ctx.loadingAnimation = {} as InteractiveModeContext["loadingAnimation"];
+		spies.clearQueue.mockReturnValue({ steering: [{ text: "and add a test" }], followUp: [] });
+		(ctx.session as { getInterruptiblePrompt?: () => { text: string } }).getInterruptiblePrompt = () => ({
+			text: "fix the failing test",
+		});
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("fix the failing test\n\nand add a test");
+	});
+
 	it("keeps a draft typed mid-turn behind the restored prompt", () => {
 		const { ctx, editor } = createContext();
 		mutableSessionState(ctx).isStreaming = true;
