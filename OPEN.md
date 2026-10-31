@@ -1,5 +1,33 @@
 # Open items — omp-custom
 
+<!-- item: prompt-seance-over-transcript-reads state=blocked owner=- blocked=upstream -->
+
+## Historical-session questions point at `seance` — landed on `custom` (`7c16d687fe`), PR [#17523](https://github.com/can1357/oh-my-pi/pull/17523) open upstream (2026-10-31)
+
+Asked to read a past session, the model did the read itself: `archive.search`
+found the id, then 555 lines of the session `.jsonl` went through `read` and
+inline Python into the main context, and PR state that session already
+established was fetched from the network again. Two prompt texts invited it —
+`prompts/tools/archive.md` named `read` of the session `file` as the route to
+the full transcript, and `prompts/tools/seance-task-guidance.md` described only
+the `sourceSession`/`model` parameters, never when to consult.
+
+- **Change**: the archive bullet keeps the raw read for a narrow mechanical check
+  (one path, one command line, one timestamp) and sends what a session
+  concluded, changed or verified to `task` with `agent: "seance"`; the guidance
+  adds the trigger phrases, says `/seance` is the editor command for the same
+  consult, and keeps a fact that changed after the session a live check.
+- **Verified** on `custom`: a scratch `TaskTool.create()` script with
+  `parentSpawns: "task,seance"` prints all four guidance sentences and the new
+  archive bullet in the rendered description; `test/task/task-schema.test.ts`
+  10/10; `check:types` clean; `oxfmt --check` clean on the touched files.
+  `scripts/omp-aot` rebuilt `dist/omp`.
+- **Custom is behind `origin/main`**: the change landed as a two-file checkout
+  off `1e40a53922` rather than a merge; the PR branch
+  (`~/.omp/wt/seance-c29f7c56f5`) carries the CHANGELOG entry, `custom` does not.
+- **Not proved**: that the model obeys the new text — the rendering is what was
+  verified, not the behaviour.
+
 <!-- item: cd-tool-relocates-session-cwd state=blocked owner=- blocked=upstream -->
 
 ## A `cd` tool relocates the session's working directory — on `custom` (`34a52b951d`), PR [#17441](https://github.com/can1357/oh-my-pi/pull/17441) open upstream (2026-10-30)
