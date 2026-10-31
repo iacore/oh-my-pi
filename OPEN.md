@@ -1,5 +1,32 @@
 # Open items — omp-custom
 
+<!-- item: esc-restores-interrupted-prompt state=blocked owner=- blocked=upstream -->
+
+## Esc hands an interrupted prompt back — landed on `custom` (`f2778c8a24`), PR [#17528](https://github.com/can1357/oh-my-pi/pull/17528) open upstream (2026-10-31)
+
+Esc during reasoning left the composer empty: the earlier local fix returned
+the prompt only when the model had emitted nothing at all, and a thinking block
+counted as output, so "thinking started, Esc" lost the words.
+
+- **Change**: the session holds the operator's prompt (text and images, as
+  typed) for the turn it started and exposes it through
+  `getInterruptiblePrompt()`; Esc restores it through the queued-message merge
+  path, ahead of anything typed since. The window closes on `thinking_end`,
+  `text_start` and `toolcall_start` — after the first thinking block, Esc is a
+  plain stop. `composer.restoreInterruptedPrompt` (default on) turns it off.
+- **Where Esc actually lands**: a live turn holds the working row, so Escape
+  takes the loader branch, not `isStreaming`; the restore leads
+  `restoreQueuedMessagesToEditor({ abort: true })`.
+- **Verified**: `test/input-controller-escape.test.ts` (43) and
+  `test/agent-session-interruptible-prompt.test.ts` (1) on both trees;
+  `tsgo`, `oxlint`, `oxfmt --check` clean. Live on the installed build over a
+  pty: Esc inside a long first thinking block put the exact prompt back in the
+  composer and typing appended to it; Esc after the thinking block ended (text
+  streaming) left the composer empty.
+- **Custom is behind `origin/main`**: the change landed as an integration
+  commit off `custom`; the PR branch carries the changelog and docs entries,
+  `custom` does not.
+
 <!-- item: prompt-seance-over-transcript-reads state=blocked owner=- blocked=upstream -->
 
 ## Historical-session questions point at `seance` — landed on `custom` (`7c16d687fe`), PR [#17523](https://github.com/can1357/oh-my-pi/pull/17523) open upstream (2026-10-31)
