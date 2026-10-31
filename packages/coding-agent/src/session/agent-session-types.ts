@@ -462,20 +462,24 @@ export interface PromptOptions {
  *  longer part of the conversation, so the host must hold it instead of losing
  *  it. Either it was cancelled before it reached the agent (an abort or usage
  *  preflight denial raced turn setup, so it was never persisted), or the turn it
- *  started was interrupted before the model emitted anything and both the prompt
- *  and its empty assistant turn were dropped from the branch. */
+ *  started was interrupted before the model committed to an answer, and both the
+ *  prompt and that turn's assistant message were dropped from the branch. */
 export interface DroppedPrompt {
 	/** The prompt exactly as typed, before template/command expansion. */
 	text: string;
 	/** Image attachments submitted with the prompt. */
 	images?: ImageContent[];
+	/** The turn this prompt opened was taken back off the transcript, not merely
+	 *  never dispatched: a host that renders the live turn must drop it, since
+	 *  the session already rewound past it. */
+	retractedTurn?: true;
 }
 
 /** Payload for {@link AgentSession.getInterruptiblePrompt}: the user prompt
  *  that started the turn in flight, as it was typed, so a host can put it back
  *  in the composer when that turn is interrupted instead of making the user
- *  retype it. The message stays in the branch; this is the operator's own
- *  wording, which matches it only until template/command expansion. */
+ *  retype it. The message is already persisted; an interrupt inside this window
+ *  drops it again through {@link DroppedPrompt}. */
 export interface InterruptiblePrompt {
 	/** The prompt exactly as typed, before template/command expansion. */
 	text: string;
