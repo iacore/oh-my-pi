@@ -4419,6 +4419,13 @@ export class AgentSession implements SettingsScope {
 			if (delta.type === "text_delta" || delta.type === "thinking_delta" || delta.type === "toolcall_delta") {
 				this.tokenRate.push(delta.delta);
 			}
+			// An interrupt returns the prompt only while the turn is still inside
+			// its first thinking block. Once that block ends — or visible text or a
+			// tool call begins — the model has committed to an answer, and Esc is a
+			// stop, not a retake of the prompt.
+			if (delta.type === "thinking_end" || delta.type === "text_start" || delta.type === "toolcall_start") {
+				this.#interruptiblePrompt = undefined;
+			}
 		} else if (event.type === "message_end" && event.message.role === "assistant") {
 			const assistant = event.message as AssistantMessage;
 			this.tokenRate.end(
@@ -10654,9 +10661,11 @@ export class AgentSession implements SettingsScope {
 	 * The user prompt that started the turn in flight, exactly as typed and with
 	 * its attachments: what a host puts back in the composer when it interrupts
 	 * that turn, so an Esc is an edit rather than a retype. Undefined while no
-	 * turn runs, and for prompts the session did not take from the operator
-	 * (synthetic and agent-attributed work). The message itself stays in the
-	 * branch — this is the operator's wording, before command expansion.
+	 * turn runs, for prompts the session did not take from the operator
+	 * (synthetic and agent-attributed work), and once the turn's first thinking
+	 * block has ended — from then on Esc stops an answer that has begun, it does
+	 * not ask for the prompt back. The message itself stays in the branch; this
+	 * is the operator's wording, before command expansion.
 	 */
 	getInterruptiblePrompt(): InterruptiblePrompt | undefined {
 		return this.#interruptiblePrompt;
