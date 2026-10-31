@@ -1,6 +1,7 @@
 # Open items — omp-custom
 
 <!-- item: cd-tool-relocates-session-cwd state=blocked owner=- blocked=upstream -->
+
 ## A `cd` tool relocates the session's working directory — on `custom` (`34a52b951d`), PR [#17441](https://github.com/can1357/oh-my-pi/pull/17441) open upstream (2026-10-30)
 
 A session told to work inside a worktree or another project could not make the
@@ -23,7 +24,6 @@ and a `cd` inside a command dies with the shell. `cd` now moves the session.
 - **Residual**: the `/btw` move gate is TUI-only state, so a tool-driven move
   does not pass through it.
 
-<!-- item: tern-fork-lands-in-a-new-tab state=done owner=- blocked=- -->
 ## `/fork` inside a Tern pane lands in a tab of its own — on `custom` (`182f1d74bf`, 2026-10-30)
 
 The Tern fork (`87c8df3ac2`) asked Tern's `fork` op for `omp --fork` and took
@@ -52,6 +52,7 @@ its own.
 - **Custom-only**, like the feature it adjusts: no PR, no changelog entry.
 
 <!-- item: history-recall-cursor-at-end state=blocked owner=- blocked=upstream -->
+
 ## A recalled prompt opens at its end — landed on `custom` (`5f32c3d9e3`), PR [#17233](https://github.com/can1357/oh-my-pi/pull/17233) open upstream (2026-10-28)
 
 ArrowUp recalled a multi-row history entry with the caret on its first line, so
@@ -75,6 +76,7 @@ anchored a wrapped single-row entry at its top.
   entry, `custom` does not.
 
 <!-- item: doas-shell-mode-interactive-pty state=blocked owner=- blocked=upstream -->
+
 ## The user shell's `!doas` runs on the interactive terminal — landed on `custom` (`e31af465eb`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-28)
 
 `!doas …` in the TUI died with `doas: Authentication failed` even after the bash
@@ -97,6 +99,7 @@ password prompt had nowhere to go.
   `custom` does not.
 
 <!-- item: tern-agent-banners-honor-notify-settings state=blocked owner=- blocked=upstream -->
+
 ## Tern's agent banners honor `ask.notify`/`completion.notify` — landed on `custom` (`4d64deb907`), PR [#17227](https://github.com/can1357/oh-my-pi/pull/17227) open upstream (2026-10-28)
 
 With Ask Notification and Completion Notification set to `off`, Tern still raised
@@ -131,6 +134,7 @@ from the OSC 9/99 notification the settings gated.
   changelog entry, `custom` does not.
 
 <!-- item: job-glance-meter-whole state=blocked owner=- blocked=upstream -->
+
 ## A job glance keeps the meter's whole — landed on `custom` (`886392f50a`), PR [#17226](https://github.com/can1357/oh-my-pi/pull/17226) open upstream (2026-10-28)
 
 A running job's card and the HUD pill read `140` while the progress bar under
@@ -155,6 +159,7 @@ line, the tooltip summary — dropped the total.
   does not.
 
 <!-- item: autolearn-policy-moved-to-extension state=blocked owner=- blocked=human -->
+
 ## Auto-learn policy moved out of core into an extension (2026-10-27)
 
 `/skill:save` was typed by hand in every session that ever captured a lesson —
@@ -193,7 +198,6 @@ capture, and the rate — into `~/.omp/agent/extensions/autolearn/`, where
   (a docs commit created while this change was staged); `1daea6eea2` carries
   the rest.
 
-<!-- item: autoresearch-extension-removed state=done owner=- blocked=- -->
 ## Built-in autoresearch removed from `custom` (2026-10-27)
 
 Never used in any past session, so the whole feature is gone: the
@@ -223,6 +227,7 @@ TUI side (`apps/autoresearch-dashboard.ts`, `apps/autoresearch-data.ts`,
   deliberately; when `sdk.ts` conflicts, keep the deletion.
 
 <!-- item: doas-sudo-bash-calls-get state=blocked owner=- blocked=upstream -->
+
 ## `doas`/`sudo` bash calls get a terminal for their password prompt — landed on `custom` (`0303e0f488`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-10-18)
 
 `/usr/bin/doas` here is OpenDoas (`doas [-Lns]` — no `-A`/askpass, confirmed by
@@ -268,7 +273,6 @@ without ever prompting, and `echo hunter2 | doas true` failed the same way
   same one-word fix now exists twice — on `custom` and on the PR branch — so the
   PR MUST land before the next upstream merge.
 
-<!-- item: in-process-uptime-builtin-is state=done owner=- blocked=- -->
 ## The in-process `uptime` builtin is gone from the shell — landed on `custom` (`09210499e7`), not upstreamed (2026-10-18)
 
 `uptime` in the embedded shell **was** `pi-builtins`' in-process builtin
@@ -311,7 +315,6 @@ the accurate `/var/run/utmp`. Measured the same day: `uptime` → `up 1118 days`
   `/var/lib/random-seed` was declined and stays undone, so coreutils `who -b`
   still prints 2023.
 
-<!-- item: session-titles-landed-on-custom state=done owner=- blocked=- -->
 ## Session titles — landed on `custom` (`f1403ab55e`, `559aa975ba`), not upstreamed
 
 A generated session title is the tab label in a TSP terminal: omp writes it to
@@ -370,6 +373,7 @@ their session title slot rewritten in place (256-byte first line, `source:
   start, not by the live process.
 
 <!-- item: unauthenticated-github-release-fetch-in state=blocked owner=- blocked=upstream -->
+
 ## Unauthenticated GitHub release fetch in `tools-manager.ts` — landed on `custom` (`7ee58e5f60`), PR [#15981](https://github.com/can1357/oh-my-pi/pull/15981) open upstream
 
 `getLatestVersion` (`packages/coding-agent/src/utils/tools-manager.ts:176`) used to fetch
@@ -392,7 +396,6 @@ tool install died with `GitHub API error: 403` — exporting a token did not rea
   resolve through `$which`, so `getToolPath` returns before the download path runs; the fix was
   checked by calling `getLatestVersion` directly.
 
-<!-- item: local-codegraph-ignore-landed-on state=done owner=- blocked=- -->
 ## Local `.codegraph/` ignore — landed on `custom` (`5f67ef1bfb`), upstreaming declined
 
 `.gitignore` now carries `.codegraph/` under `# Project specific`. It is a per-checkout index
@@ -403,6 +406,7 @@ it never forced a rebuild — it only cluttered `git status`.
   entry stays on `custom`; do not propose it again.
 
 <!-- item: session-pin-palette-wording-on state=blocked owner=- blocked=upstream -->
+
 ## `/session pin` palette wording — on `custom` (`a060de43da`), PR [#15479](https://github.com/can1357/oh-my-pi/pull/15479) open upstream
 
 The row read *Pin the current provider to a stored OAuth account*: the provider as the pinned
@@ -428,6 +432,7 @@ and the command's own text listing phrase it. The string is unchanged since the 
   intact at 80 columns where the old 48-character string ellipsized.
 
 <!-- item: rows-with-no-cells-inside state=blocked owner=- blocked=upstream -->
+
 ## Rows with no cells inside a streamed table — band fixed on `custom` (`971cc3e7c4`), PR [#15499](https://github.com/can1357/oh-my-pi/pull/15499) open upstream
 
 A reply whose body is a wide GFM table (`#renderTable`, `packages/tui/src/components/markdown.ts`)
@@ -488,6 +493,7 @@ installed launcher in session `2026-10-12T14-37-11-882Z_01a1308b-…` (cwd `/tmp
   recurs after this fix, capture the bytes before touching the retire/commit path.
 
 <!-- item: mid-stream-scrollback-publication-off state=open owner=- blocked=- -->
+
 ## Mid-stream scrollback publication — off on `custom` (`595db56375`), not upstreamed
 
 `createAssistantMessageComponent` (`packages/tui/src/prompt/interactive-context-helpers.ts`)
@@ -510,7 +516,6 @@ retracted, and no VT100/ECMA-48 sequence addresses lines that already scrolled i
 - **No config key.** The flag is wired in code, so flipping it back needs a source edit and a
   rebuild; decide whether it earns a setting.
 
-<!-- item: compiled-launcher-started-in-omp state=done owner=- blocked=- -->
 ## Compiled launcher started in `~/.omp/.dev-cwd` — fixed on `custom` (`3053707ab9`)
 
 `packages/coding-agent/scripts/omp` (local commit `4c843c0d0c`) `cd`s into
@@ -541,6 +546,7 @@ directory still resolves `.` there through the shim.
   whether they should be moved into the real project directories.
 
 <!-- item: upstream-merge-landed-on-custom state=blocked owner=- blocked=upstream -->
+
 ## Upstream merge — landed on `custom` (`d741066820`), 2026-10-12
 
 `Merge origin/main into custom (2681 commits)` took the tree from upstream
@@ -564,7 +570,6 @@ suites are green on the merged tree.
   npm and HTML-export builds, `SYSTEM.md` discovery ordering).
 - **`bun.lock` took upstream's side** and was re-resolved with `bun install`.
 
-<!-- item: process-niceness-for-spawned-tools state=done owner=- blocked=- -->
 ## Process niceness for spawned tools — landed on `custom` (`1a753eb8b8`)
 
 `process.nice` lowers the scheduling priority of omp and every process it spawns, so
@@ -589,7 +594,6 @@ settings load); `~/.omp/agent/config.yml` sets `process.nice: 19`.
   per-*thread*, so the applier walks `/proc/self/task`; children inherit the forking
   thread's niceness. Skipped under `isBunTestRuntime()` so the suite is never reniced.
 
-<!-- item: auto-learn-session-settle-scribe state=done owner=- blocked=- -->
 ## Auto-Learn session-settle scribe — landed on `custom` (`ebde23a70d`), not upstreamed
 
 `feat(autolearn): ran a small-model scribe when a session settles`, built in
@@ -629,7 +633,6 @@ fast-forwarded into `custom`; the launcher rebuilt `dist/omp` on first use.
   record durable facts. Whether `learn` should gain a sharpshooter branch is an
   open decision.
 
-<!-- item: interrupt-before-output-returns-the state=done owner=- blocked=- -->
 ## Interrupt before output returns the prompt to the editor — landed on `custom` (`adf9758c9e`), not upstreamed
 
 `fix(prompt): returned an interrupted empty turn's prompt to the editor`, built in
@@ -650,6 +653,7 @@ its text back through `setPromptDropped`, so interactive mode refills the editor
   video preview or other attachment submitted with the prompt is lost when the
   turn is restored. Decide whether the restore must carry them.
 <!-- item: upstream-pr-review-round-2026-10-23 state=blocked owner=- blocked=upstream -->
+
 ## Twelve upstream PR review rounds answered — all rebased on `upstream/main` `0b5c27ab24`, awaiting maintainer review (2026-10-23)
 
 Each branch was rebased, its review threads answered, and the valid findings fixed in the tree.
@@ -674,6 +678,7 @@ Open questions left in the threads: the 60 s one-shot settle drain (#15460), whe
 unavailable role (#14271). Merge order matters for #16103: it duplicates `custom`'s `0303e0f488`.
 
 <!-- item: thinking-badge-speed-clamp state=blocked owner=01a18342-c1b6-77fb-b290-90775e5567a6 blocked=upstream -->
+
 ## Thinking badge no longer capped at 200 tok/s — on `custom` (`645353fc7c`), PR #17306 open (2026-10-28)
 
 `SPEED_MAX` exists to saturate the accent-color fade, but `Math.min` also clamped the printed
@@ -683,6 +688,7 @@ deltas over the spans that carried them. Waiting on [can1357/oh-my-pi#17306](htt
 `custom` carries the same source + test as integration commit `645353fc7c`.
 
 <!-- item: lithosai-decode-regression state=blocked owner=01a18342-c1b6-77fb-b290-90775e5567a6 blocked=external -->
+
 ## lithosai DeepSeek decode rate stepped down on 10-24 and partly recovered on 10-27 (2026-10-28)
 
 Measured over the local session corpus with `scripts/session-stats/speed.py` (median decode tok/s,
@@ -694,7 +700,6 @@ and 490 (`-fast`) tok/s today, and on 10-16 the same harness measured base 510 a
 the two ids' relative speeds have flipped, which a harness-wide bias cannot produce. The user has
 emailed support@lithosai.com; this waits on their reply, not on any change here.
 
-<!-- item: omp-desktop-toasts-disabled-for state=done owner=- blocked=- -->
 ## omp desktop toasts disabled for every future session (2026-10-23)
 
 A toast titled `omp` with body `ping` appeared with no session name and no content, and nothing in
@@ -708,6 +713,7 @@ false under that variable (checked this session). Sessions started before the ch
 environment until restarted.
 
 <!-- item: follow-ups-found-in-the-2026-10 state=open owner=- blocked=human -->
+
 ## Follow-ups the 2026-10-23 review rounds surfaced but did not take
 
 - #16103: the bash tool still silently drops an explicit `pty: true` on an `async: true` call (`packages/coding-agent/src/tools/bash.ts:1217-1221`); error vs documented no-op is a product call.
@@ -717,6 +723,7 @@ environment until restarted.
 - #14419: whether Esc in a focused view may hard-abort a delegated `task` run, or must be gated.
 
 <!-- item: a-shown-picture-is-a-static-frame state=open owner=- blocked=- -->
+
 ## A shown picture is a static frame
 
 A line naming a local image file draws that file, but only its first frame: an animated GIF or
@@ -725,6 +732,7 @@ one graphic. A picture taller than 60% of the viewport is capped to that height,
 its file once per path — replacing the bytes at the same path does not redraw it in that block.
 
 <!-- item: inline-image-lines-pr-17118 state=blocked owner=- blocked=upstream -->
+
 ## Inline image files: upstreamed as PR #17118
 
 The feature landed on `custom` as `d8b88efcf4`. The upstream hand-off is
@@ -735,6 +743,7 @@ maintainer asks for a different target syntax or a setting default, the change i
 (what may lift) and `chat/raster-figure.ts` (how it draws).
 
 <!-- item: tool-card-intent-pr-17197 state=blocked owner=- blocked=upstream -->
+
 ## Live tool cards keep the model's intent: upstreamed as PR #17197
 
 `tool_execution_start` carries the execution args, and the harness strips `i`
@@ -761,6 +770,7 @@ session showed "Bash Listing the files". Fixed on `custom` as `b33e30feee` with
   would leak harness metadata into tool execution — do not.
 
 <!-- item: managed-skills-symlink-root-pr-17201 state=blocked owner=- blocked=upstream -->
+
 ## A symlinked managed-skills root: upstreamed as PR #17201
 
 `manage_skill`/`learn` write to `getManagedSkillsDir()`, which is
@@ -785,6 +795,7 @@ unchanged.
   `writeManagedSkill` are what a setting would have to preserve.
 
 <!-- item: temp-root-under-tmp-omp-17274 state=blocked owner=- blocked=upstream -->
+
 ## omp's temp paths under one `<tmpdir>/omp`: upstreamed as PR #17274
 
 omp wrote `omp-local`, `omp-shell-snapshots-<uid>`, `omp-sshots-*`, `omp-dump-*`,
