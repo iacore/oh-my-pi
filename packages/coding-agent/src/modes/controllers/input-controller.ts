@@ -77,6 +77,7 @@ import { cfgCycleOrder } from "../../config/model-settings";
 import {
 	cfgBareExitOnEmptySession,
 	cfgBareSlashCommands,
+	cfgComposerRestoreInterruptedPrompt,
 	cfgDisplayHideToolActivity,
 	cfgDisplayHideToolOutputDetails,
 	cfgDoubleEscapeAction,
@@ -329,6 +330,25 @@ export class InputController {
 
 	#abortStreamingTurn(): void {
 		void this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+	}
+
+	/**
+	 * Esc on a live turn: hand the prompt that started it back to the composer,
+	 * then stop the turn. An interrupt is usually "that was not what I meant",
+	 * and the typed words are already in the transcript — restoring them makes
+	 * the correction an edit instead of a retype. They merge ahead of whatever
+	 * was typed since, exactly like the queued-message restore, so a draft
+	 * started mid-turn survives.
+	 */
+	#interruptStreamingTurn(): void {
+		if (!isSettingsInitialized() || cfgComposerRestoreInterruptedPrompt.get(settings)) {
+			const prompt = this.ctx.session.getInterruptiblePrompt?.();
+			if (prompt) {
+				this.#restoreEntriesToEditor([prompt]);
+				this.ctx.ui.requestRender();
+			}
+		}
+		this.#abortStreamingTurn();
 	}
 
 	/**
@@ -618,7 +638,7 @@ export class InputController {
 				this.ctx.isPythonMode = false;
 				this.ctx.updateEditorBorderColor();
 			} else if (this.ctx.session.isStreaming) {
-				this.#abortStreamingTurn();
+				this.#interruptStreamingTurn();
 			} else if (this.ctx.editor.getText().trim()) {
 				// Esc must not destroy an in-progress draft.
 				this.ctx.lastEscapeTime = 0;

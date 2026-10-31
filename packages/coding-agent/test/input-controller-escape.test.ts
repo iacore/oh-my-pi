@@ -8,7 +8,7 @@ import { USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages
 import { vocalizer } from "@oh-my-pi/pi-coding-agent/tts/vocalizer";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 
-import { cfgDoubleEscapeAction } from "@oh-my-pi/pi-coding-agent/modes/settings";
+import { cfgComposerRestoreInterruptedPrompt, cfgDoubleEscapeAction } from "@oh-my-pi/pi-coding-agent/modes/settings";
 
 type Spy = Mock<(...args: unknown[]) => unknown>;
 type StartPendingSubmissionSpy = Mock<InteractiveModeContext["startPendingSubmission"]>;
@@ -29,6 +29,7 @@ type FakeEditor = {
 	onDequeue?: () => void;
 	onChange?: (text: string) => void;
 	setText(text: string): void;
+	setCollapsedText(text: string): void;
 	getText(): string;
 	addToHistory(text: string): void;
 	setActionKeys(action: string, keys: string[]): void;
@@ -121,6 +122,9 @@ function createContext(): {
 		setText(text: string) {
 			editorText = text;
 		},
+		setCollapsedText(text: string) {
+			editorText = text;
+		},
 		getText() {
 			return editorText;
 		},
@@ -168,6 +172,7 @@ function createContext(): {
 			abortBash,
 			abortEval,
 			clearQueue,
+			getInterruptiblePrompt: vi.fn(() => undefined),
 			getQueuedMessages,
 			prompt,
 			subscribe: vi.fn((listener: (event: { type: string }) => void) => {
@@ -743,6 +748,66 @@ describe("InputController escape behavior", () => {
 		// scrollback replay).
 		expect(spies.requestRender).toHaveBeenCalledWith(true);
 		expect(spies.resetDisplay).not.toHaveBeenCalled();
+	});
+
+	it("hands the interrupted prompt back to the composer when Esc stops a live turn", () => {
+		const { ctx, editor, spies } = createContext();
+		mutableSessionState(ctx).isStreaming = true;
+		const getInterruptiblePrompt = vi.fn(() => ({ text: "fix the failing test" }));
+		(ctx.session as { getInterruptiblePrompt?: () => { text: string } }).getInterruptiblePrompt =
+			getInterruptiblePrompt;
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("fix the failing test");
+		expect(spies.requestRender).toHaveBeenCalled();
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+	});
+
+	it("keeps a draft typed mid-turn behind the restored prompt", () => {
+		const { ctx, editor } = createContext();
+		mutableSessionState(ctx).isStreaming = true;
+		(ctx.session as { getInterruptiblePrompt?: () => { text: string } }).getInterruptiblePrompt = () => ({
+			text: "fix the failing test",
+		});
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.setText("and rerun it");
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("fix the failing test\n\nand rerun it");
+	});
+
+	it("aborts without touching the composer when the restore is turned off", () => {
+		cfgComposerRestoreInterruptedPrompt.override(Settings.instance, false);
+		const { ctx, editor, spies } = createContext();
+		mutableSessionState(ctx).isStreaming = true;
+		(ctx.session as { getInterruptiblePrompt?: () => { text: string } }).getInterruptiblePrompt = () => ({
+			text: "fix the failing test",
+		});
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("");
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+	});
+
+	it("aborts a live turn with nothing to restore when the prompt was not the operator's", () => {
+		const { ctx, editor, spies } = createContext();
+		mutableSessionState(ctx).isStreaming = true;
+		editor.setText("draft");
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(editor.getText()).toBe("draft");
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
 	});
 
 	it("ignores double-Esc when the action is disabled", () => {

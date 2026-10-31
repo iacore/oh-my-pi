@@ -294,6 +294,7 @@ import type {
 	FollowUpOptions,
 	FreshSessionResult,
 	HandoffResult,
+	InterruptiblePrompt,
 	ModelCycleResult,
 	Prewalk,
 	PromptOptions,
@@ -1008,6 +1009,8 @@ export class AgentSession implements SettingsScope {
 	/** Host hook invoked when a typed user prompt is dropped before dispatch;
 	 *  see {@link setPromptDropped}. */
 	#promptDropped: ((prompt: DroppedPrompt) => void) | undefined;
+	/** The typed prompt whose turn is in flight; see {@link getInterruptiblePrompt}. */
+	#interruptiblePrompt: InterruptiblePrompt | undefined;
 	#titleGenerationAbortController = new AbortController();
 	#toolChoiceQueue = new ToolChoiceQueue();
 
@@ -8024,6 +8027,13 @@ export class AgentSession implements SettingsScope {
 				: undefined;
 		let turnError: unknown;
 		let dispatched = false;
+		// Kept for exactly the turn's lifetime, so an interrupt mid-turn can hand
+		// the operator's own words back to the composer (getInterruptiblePrompt).
+		const interruptiblePrompt: InterruptiblePrompt | undefined =
+			message.role === "user" && promptAttribution === "user"
+				? { text: typedText, images: options?.images }
+				: undefined;
+		this.#interruptiblePrompt = interruptiblePrompt;
 		try {
 			dispatched = await this.#promptWithMessage(message, expandedText, {
 				...options,
@@ -8048,6 +8058,9 @@ export class AgentSession implements SettingsScope {
 			}
 			throw error;
 		} finally {
+			// #promptWithMessage spans the run, so reaching here means the turn
+			// settled: there is nothing left to hand back.
+			if (this.#interruptiblePrompt === interruptiblePrompt) this.#interruptiblePrompt = undefined;
 			// Clean up residual eager-todo directive if the prompt never consumed it
 			// (e.g., compaction aborted, validation failed).
 			this.#toolChoiceQueue.removeByLabel("eager-todo");
@@ -10635,6 +10648,18 @@ export class AgentSession implements SettingsScope {
 	 *  it would vanish; interactive mode restores it to the editor for editing. */
 	setPromptDropped(handler: ((prompt: DroppedPrompt) => void) | undefined): void {
 		this.#promptDropped = handler;
+	}
+
+	/**
+	 * The user prompt that started the turn in flight, exactly as typed and with
+	 * its attachments: what a host puts back in the composer when it interrupts
+	 * that turn, so an Esc is an edit rather than a retype. Undefined while no
+	 * turn runs, and for prompts the session did not take from the operator
+	 * (synthetic and agent-attributed work). The message itself stays in the
+	 * branch — this is the operator's wording, before command expansion.
+	 */
+	getInterruptiblePrompt(): InterruptiblePrompt | undefined {
+		return this.#interruptiblePrompt;
 	}
 
 	/**
