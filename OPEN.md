@@ -45,7 +45,7 @@ plain text and clicking it did nothing.
 
 <!-- item: esc-restores-interrupted-prompt state=blocked owner=- blocked=upstream -->
 
-## Esc hands an interrupted prompt back — landed on `custom` (`f2778c8a24`), PR [#17528](https://github.com/can1357/oh-my-pi/pull/17528) open upstream (2026-10-31)
+## Esc hands an interrupted prompt back — landed on `custom` (`672fe60bbe`), PR [#17528](https://github.com/can1357/oh-my-pi/pull/17528) open upstream (2026-10-31)
 
 Esc during reasoning left the composer empty: the earlier local fix returned
 the prompt only when the model had emitted nothing at all, and a thinking block
@@ -57,15 +57,23 @@ counted as output, so "thinking started, Esc" lost the words.
   path, ahead of anything typed since. The window closes on `thinking_end`,
   `text_start` and `toolcall_start` — after the first thinking block, Esc is a
   plain stop. `composer.restoreInterruptedPrompt` (default on) turns it off.
+- **The turn goes too**: an interrupt inside that window drops the user message
+  and the aborted assistant message from the live context and the branch
+  (`#restoreInterruptedTurn`), skips the interrupted-thinking continuity quote,
+  and reports the prompt as `retractedTurn`. It supersedes the old
+  empty-turn-only restore. A cut is not durable on its own — nothing writes a
+  leaf change — so the retraction appends a hidden `retracted-turn` custom
+  message off the branch capturing the new leaf; without it `--resume` replayed
+  the dropped turn (measured, then fixed).
 - **Where Esc actually lands**: a live turn holds the working row, so Escape
   takes the loader branch, not `isStreaming`; the restore leads
   `restoreQueuedMessagesToEditor({ abort: true })`.
-- **Verified**: `test/input-controller-escape.test.ts` (43) and
-  `test/agent-session-interruptible-prompt.test.ts` (1) on both trees;
-  `tsgo`, `oxlint`, `oxfmt --check` clean. Live on the installed build over a
-  pty: Esc inside a long first thinking block put the exact prompt back in the
-  composer and typing appended to it; Esc after the thinking block ended (text
-  streaming) left the composer empty.
+- **Verified**: `test/agent-session-interruptible-prompt.test.ts` (3, including
+  a reopen of the saved session file) and the escape/interrupt suites on both
+  trees; `tsgo`, `oxlint`, `oxfmt --check` clean. Live over a pty: Esc inside a
+  long first thinking block emptied the transcript and refilled the composer,
+  the file ended with the off-branch record, and `--resume` reopened it with no
+  turn.
 - **Custom is behind `origin/main`**: the change landed as an integration
   commit off `custom`; the PR branch carries the changelog and docs entries,
   `custom` does not.
