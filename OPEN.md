@@ -1,5 +1,48 @@
 # Open items — omp-custom
 
+<!-- item: tern-fork-selects-its-tab state=blocked owner=- blocked=upstream -->
+
+## `/fork` in Tern selects the tab it forked into — landed on `custom` (`98695c73a0`), PR [#17596](https://github.com/can1357/oh-my-pi/pull/17596) open upstream (2026-11-01)
+
+`tern move BLOCK new-tab` puts the fork's block in a tab of its own and leaves
+the tab the fork started from selected, so `/fork` said "Session forked into a
+new tab" while the user stayed on the original session and had to find the
+fork in the rail.
+
+- **Change**: `focusTernBlock` in `tools/browser/tern/move.ts` runs
+  `tern focus BLOCK`, and `#forkIntoTernTab` calls it after a successful move.
+  A failed focus is logged, not reported: the tab exists, only its selection is
+  missing. A failed move behaves as before.
+- **Verified**: in an isolated Tern window (0.9.9, private daemon, Xvfb) after
+  `tern move <block> new-tab` the original tab stayed `shown: true` and the new
+  one `shown: false`; after `tern focus <block>` the new tab was `shown: true`
+  and the original was not. Unit tests cover the focus argv, its failure
+  message, and `/fork` calling it only after a successful move
+  (`fork-command.test.ts` 19, `browser-tern-move.test.ts` 4).
+- **Not proved end to end**: the `/fork` path itself was not driven live — a
+  source checkout refuses to start here (`error: Bun runtime must be >= 1.4.4
+  (found v1.4.2)`), so the composition is unit-tested only.
+
+<!-- item: read-row-url-link state=blocked owner=- blocked=upstream -->
+
+## A read row's URL is a link — landed on `custom` (`98695c73a0`), PR [#17598](https://github.com/can1357/oh-my-pi/pull/17598) open upstream (2026-11-01)
+
+A `read` of a URL draws as a path target, and the row took its link from
+`fileHref`, which links only an absolute filesystem path — so the URL showed as
+plain text and clicking it did nothing.
+
+- **Change**: `urlHref` in `tools/native-view.ts` builds an `http(s)` link
+  (a bare `www.` gains its scheme), and the folded row's head plus every row of
+  a grouped read fall back to it. Internal URLs and relative paths stay
+  unlinked.
+- **Verified**: `tool-result-control-sequences.test.ts` drives real
+  `ReadToolGroupComponent`s — a lone URL read carries the URL on its head, a
+  two-URL read carries each URL on its row's link span (19 tests with
+  `read-render.test.ts`).
+- **Not proved**: the click in a Tern window. The row now emits the same kind
+  of link the file rows already do, and Tern opens those through its link
+  handling, but the click itself was not driven.
+
 <!-- item: esc-restores-interrupted-prompt state=blocked owner=- blocked=upstream -->
 
 ## Esc hands an interrupted prompt back — landed on `custom` (`f2778c8a24`), PR [#17528](https://github.com/can1357/oh-my-pi/pull/17528) open upstream (2026-10-31)
