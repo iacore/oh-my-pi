@@ -73,6 +73,7 @@ function makeCtx(): RenderInitialMessagesTestContext {
 
 	const ctx = {
 		chatContainer,
+		pendingShellContainer: { clear: vi.fn(), disposeChildren: vi.fn() },
 		pendingMessagesContainer: { clear: vi.fn(), disposeChildren: vi.fn() },
 		updatePendingMessagesDisplay: vi.fn(),
 		pendingBashComponents: [],
@@ -167,6 +168,7 @@ function makeRenderCtx(
 	chatContainer.setToolActivityVisible(!hideToolActivity);
 	const ctx = {
 		chatContainer,
+		pendingShellContainer: new Container(),
 		pendingMessagesContainer: new Container(),
 		updatePendingMessagesDisplay: () => helpers.updatePendingMessagesDisplay(),
 		compactionQueuedMessages: [],

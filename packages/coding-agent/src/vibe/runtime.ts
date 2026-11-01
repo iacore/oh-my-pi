@@ -24,7 +24,7 @@ import {
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { logger, prompt, Snowflake, tempSubpath } from "@oh-my-pi/pi-utils";
-import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
+import type { AsyncJob, AsyncJobManager, AsyncJobRunResult } from "../async/job-manager";
 import { validateAgentAccountPools } from "../config/account-pools";
 import { resolveAgentModelSelection } from "../config/model-resolver";
 import { sessionLocalProtocolOptions } from "../internal-urls/context";
@@ -1284,6 +1284,7 @@ export class VibeSessionRegistry {
 		const agentAccountPools = validateAgentAccountPools(cfgTaskAgentAccountPools.get(session.settings));
 		return {
 			cwd: session.cwd,
+			costGate: session.costGate,
 			agent: record.agent,
 			task: message,
 			assignment: message,
@@ -1310,7 +1311,8 @@ export class VibeSessionRegistry {
 			asyncJobManager: session.asyncJobManager,
 			inheritedSessionAgents: session.getSessionAgents?.(),
 			mcpManager: session.mcpManager ?? MCPManager.instance(),
-			contextFiles: session.contextFiles?.filter(file => path.basename(file.path).toLowerCase() !== "agents.md"),
+			contextFiles: session.contextFiles,
+			noContextFiles: session.noContextFiles,
 			skills: [...(session.skills ?? [])],
 			workspaceTree: session.workspaceTree,
 			promptTemplates: session.promptTemplates,
@@ -1475,7 +1477,7 @@ export class VibeSessionRegistry {
 		settledJobId: string,
 		turnIndex: number,
 		result: SingleResult,
-	): Promise<string> {
+	): Promise<AsyncJobRunResult> {
 		await this.#finishTurn(session, manager, record, settledJobId);
 		const failed = result.exitCode !== 0 || result.aborted === true;
 		const status = result.aborted ? "aborted" : failed ? "failed" : "completed";
@@ -1534,7 +1536,10 @@ export class VibeSessionRegistry {
 			].join("\n");
 		}
 		if (failed) throw new VibeTurnError(text);
-		return text;
+		// A vibe turn job's id is never the agent id, so the delivery names the
+		// agent's handles. A follow-up turn that ends in prose writes no
+		// `<id>.md`, leaving an earlier turn's output under `agent://<id>`.
+		return { text, agentOutputPublished: result.outputPath !== undefined };
 	}
 }
 

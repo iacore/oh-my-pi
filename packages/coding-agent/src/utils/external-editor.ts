@@ -2,6 +2,7 @@
  * Utilities for launching an external text editor ($VISUAL / $EDITOR).
  */
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { $env, $which, Snowflake, tempSubpath } from "@oh-my-pi/pi-utils";
 
 /**
@@ -20,6 +21,23 @@ export function getEditorCommand(): string | undefined {
 	if (configured) return configured;
 	if (process.platform === "win32") return "notepad";
 	return undefined;
+}
+
+/**
+ * Names the editor {@link getEditorCommand} launches for UI labels ("Edit in
+ * Notepad", "Edit in nvim"): the command's program without its directory,
+ * quotes or Windows executable extension. `undefined` when none is resolved.
+ */
+export function getEditorName(command = getEditorCommand()): string | undefined {
+	if (!command) return undefined;
+	const quote = command[0] === '"' || command[0] === "'" ? command[0] : undefined;
+	const program = quote ? command.slice(1).split(quote)[0] : command.split(/\s+/)[0];
+	const name = path.win32
+		.basename(program ?? "")
+		.replace(/\.(exe|cmd|bat|com)$/i, "")
+		.trim();
+	if (!name) return undefined;
+	return name.toLowerCase() === "notepad" ? "Notepad" : name;
 }
 
 export interface OpenInEditorOptions {

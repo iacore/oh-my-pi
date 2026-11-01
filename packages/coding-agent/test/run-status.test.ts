@@ -138,8 +138,10 @@ describe("run status OSC 7501 reporting", () => {
 		]);
 	});
 
-	it("re-sends a working record after a suspend but never repeats a done result", () => {
+	it("re-sends prompt-invalidated working and blocked records but never repeats a done result", () => {
 		setRunStatus({ state: "working" });
+		resendProgramStatus();
+		setRunStatus({ state: "blocked", kind: "permission", msg: "Approve the command?" });
 		resendProgramStatus();
 		setRunStatus({ state: "done" });
 		resendProgramStatus();
@@ -147,6 +149,8 @@ describe("run status OSC 7501 reporting", () => {
 		expect(writes).toEqual([
 			report("state=working:app=omp"),
 			report("state=working:app=omp"),
+			report(`state=blocked:kind=permission:app=omp:msg=${Buffer.from("Approve the command?").toString("base64")}`),
+			report(`state=blocked:kind=permission:app=omp:msg=${Buffer.from("Approve the command?").toString("base64")}`),
 			report("state=done:app=omp"),
 		]);
 	});
