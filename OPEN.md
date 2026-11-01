@@ -1,5 +1,35 @@
 # Open items — omp-custom
 
+<!-- item: tab-glob-and-enter-submit state=blocked owner=- blocked=upstream -->
+
+## Tab expands a path glob, Enter sends the draft — landed on `custom` (`c92981a6d7`), PR [#17648](https://github.com/can1357/oh-my-pi/pull/17648) open upstream (2026-11-01)
+
+Tab on a token naming exactly one path replaces it with that path (a directory
+gains its trailing separator); a token naming nothing or several paths is left
+alone so completion still lists the ambiguity. Enter sends the draft as typed
+while an autocomplete popup is open and dismisses it, so choosing a row is Tab
+(or a right arrow at end of line) — a popup can no longer swallow a send or
+complete a slash command behind it.
+
+- **Change**: `packages/tui/src/path-glob.ts` (`expandPathGlobAt`,
+  `pathGlobTokenStart`), `Editor#expandPathGlobAtCursor` and the new
+  `pathGlobBaseDir` host hook (wired to `sessionManager.getCwd()` in
+  `interactive-mode.ts`), and the rewritten autocomplete key block in
+  `packages/tui/src/components/editor.ts`. The synchronous slash completion on
+  Enter is deleted; directory chaining after an accepted row now applies only
+  to `@` mentions, the rule the deleted Enter path carried for slash-command
+  arguments (#12107).
+- **Verified**: `bun test` in `packages/tui` (335 tests across the four editor
+  suites), `bun run check` in `packages/tui`, `bun run check:types` in
+  `packages/coding-agent`; and a pty run of a `TUI` + `Editor` harness where
+  `/cd */pixivfe` + Tab + Enter printed `/cd service/pixivfe/` and `/mo` + Enter
+  printed `/mo` with the `/model` popup open.
+- **Why it is a port, not a merge**: the PR branch is based on `origin/main`,
+  whose `engines.bun` is `>=1.4.4` and whose natives are 18.14.2; this machine
+  runs Bun 1.4.2, and a compiled binary built with it refuses to start once the
+  floor moves. Merging `origin/main` (2,014 commits ahead) also needs a natives
+  rebuild. The change landed directly on `custom` for that reason.
+
 <!-- item: tern-fork-selects-its-tab state=blocked owner=- blocked=upstream -->
 
 ## `/fork` in Tern selects the tab it forked into — landed on `custom` (`98695c73a0`), PR [#17596](https://github.com/can1357/oh-my-pi/pull/17596) open upstream (2026-11-01)
