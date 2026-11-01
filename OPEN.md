@@ -24,11 +24,10 @@ complete a slash command behind it.
   `packages/coding-agent`; and a pty run of a `TUI` + `Editor` harness where
   `/cd */pixivfe` + Tab + Enter printed `/cd service/pixivfe/` and `/mo` + Enter
   printed `/mo` with the `/model` popup open.
-- **Why it is a port, not a merge**: the PR branch is based on `origin/main`,
-  whose `engines.bun` is `>=1.4.4` and whose natives are 18.14.2; this machine
-  runs Bun 1.4.2, and a compiled binary built with it refuses to start once the
-  floor moves. Merging `origin/main` (2,014 commits ahead) also needs a natives
-  rebuild. The change landed directly on `custom` for that reason.
+- **History**: it landed as a direct port because `origin/main` needed Bun
+  ≥1.4.4 and this machine ran 1.4.2. Bun is now 1.4.4 and `origin/main` is
+  merged into `custom` (`ac9860c184`), so the port and the branch agree; the PR
+  remains the upstream copy of the same change.
 
 <!-- item: tern-fork-selects-its-tab state=blocked owner=- blocked=upstream -->
 
