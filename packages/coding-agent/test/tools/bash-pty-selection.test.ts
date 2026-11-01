@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { bashNeedsAuthTerminal, canUseInteractiveBashPty } from "@oh-my-pi/pi-coding-agent/tools/bash-pty-selection";
+import {
+	authProbeArgv,
+	authPromptRequired,
+	bashNeedsAuthTerminal,
+	canUseInteractiveBashPty,
+} from "@oh-my-pi/pi-coding-agent/tools/bash-pty-selection";
 
 const originalPlatform = process.platform;
 const originalNoPty = Bun.env.PI_NO_PTY;
@@ -83,5 +88,57 @@ describe("bash terminal auth detection", () => {
 		// Only the auth command's own options count: a `-n` in the wrapped
 		// command's arguments says nothing about how the password is read.
 		expect(bashNeedsAuthTerminal("doas printf -- -n")).toBe(true);
+	});
+});
+
+describe("auth probe", () => {
+	it("probes the auth command with its non-prompting flag and a throwaway command", () => {
+		expect(authProbeArgv("doas pacman -Syu")).toEqual(["doas", "-n", "true"]);
+		expect(authProbeArgv("/usr/bin/doas pacman -Syu")).toEqual(["/usr/bin/doas", "-n", "true"]);
+		expect(authProbeArgv("echo hi && doas dinitctl restart x")).toEqual(["doas", "-n", "true"]);
+		// The wrapped command is left out: the auth command answers first.
+		expect(authProbeArgv("doas rm -rf /")).toEqual(["doas", "-n", "true"]);
+	});
+
+	it("has nothing to probe when no auth command runs", () => {
+		expect(authProbeArgv("echo doas")).toBeUndefined();
+		expect(authProbeArgv("sudo -n true")).toBeUndefined();
+		expect(authProbeArgv("true")).toBeUndefined();
+	});
+
+	it("keeps the terminal when the auth command says it must prompt", async () => {
+		const probes: string[][] = [];
+		const asked = await authPromptRequired("doas pacman -Syu", {
+			run: async argv => {
+				probes.push([...argv]);
+				return 1;
+			},
+		});
+
+		expect(asked).toBe(true);
+		expect(probes).toEqual([["doas", "-n", "true"]]);
+	});
+
+	it("skips the terminal when a cached credential or a nopass rule answers", async () => {
+		const asked = await authPromptRequired("doas pacman -Syu", { run: async () => 0 });
+		expect(asked).toBe(false);
+	});
+
+	it("keeps the terminal when the probe could not run at all", async () => {
+		const asked = await authPromptRequired("doas pacman -Syu", { run: async () => undefined });
+		expect(asked).toBe(true);
+	});
+
+	it("runs no probe when the command asks for no password", async () => {
+		let runs = 0;
+		const asked = await authPromptRequired("sudo -n true", {
+			run: async () => {
+				runs++;
+				return 0;
+			},
+		});
+
+		expect(asked).toBe(false);
+		expect(runs).toBe(0);
 	});
 });

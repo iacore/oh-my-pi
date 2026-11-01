@@ -1,5 +1,30 @@
 # Open items — omp-custom
 
+<!-- item: doas-prompt-card state=blocked owner=- blocked=upstream -->
+
+## A `doas` command opens the console only when it will prompt — landed on `custom` (`69d241ef87`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-11-01)
+
+`doas`/`sudo` took the full-pane console for every call, including the ones a
+persisted credential or a `nopass` rule answers without reading the terminal.
+The routing now probes the auth command with its own `-n` and a throwaway
+`true` before it takes a terminal, so only a call that will prompt gets one, and
+that one is a small card sized to the prompt instead of the full pane.
+
+- **Change**: `bashNeedsAuthTerminal`/`authPromptRequired` in
+  `packages/coding-agent/src/tools/bash-pty-selection.ts`, its two callers
+  (`tools/bash.ts` and `modes/controllers/command-controller.ts`), and the
+  `compact` option threaded through `session/bash-runner.ts` into
+  `packages/tui/src/tools/bash-interactive.ts` (`nativeOverlay.size`,
+  `#maxContentRows`).
+- **Verified**: `bun test` on the two `bash-*` suites in `packages/coding-agent`
+  and the new `packages/tui/test/bash-interactive-sheet.test.ts`, `bun run
+  check:types` in both packages, and a throwaway probe script against the real
+  `/usr/bin/doas` (exit 1, so a prompt is still taken) plus stand-ins for the
+  cached, missing and hanging cases.
+- **Open**: the PR is open and conflict-free after a rebase onto `origin/main`
+  (`a11a75799c`). `custom` carries a port of it rather than the branch's commits,
+  because `custom` already carried the first half of the same routing.
+
 <!-- item: tab-glob-and-enter-submit state=blocked owner=- blocked=upstream -->
 
 ## Tab expands a path glob, Enter sends the draft — landed on `custom` (`c92981a6d7`), PR [#17648](https://github.com/can1357/oh-my-pi/pull/17648) open upstream (2026-11-01)

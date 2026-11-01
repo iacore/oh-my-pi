@@ -12677,7 +12677,7 @@ export class AgentSession implements SettingsScope {
 			excludeFromContext?: boolean;
 			useUserShell?: boolean;
 			pty?: BashPtyOptions;
-			interactivePty?: { ui: BashInteractiveUi };
+			interactivePty?: { ui: BashInteractiveUi; compact?: boolean };
 		},
 	): Promise<BashResult> {
 		return this.#bash.executeBash(command, onChunk, options);

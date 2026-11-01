@@ -33,6 +33,31 @@ const DOAS = "/usr/bin/doas";
 const ptyUnavailable = process.platform === "win32" || Bun.env.PI_NO_PTY === "1" || !fs.existsSync("/bin/bash");
 const doasUnavailable = ptyUnavailable || !fs.existsSync(DOAS);
 
+/**
+ * Write a stand-in for the real auth command, named `doas`/`sudo` so the routing
+ * keys on it the way it keys on the installed one.
+ */
+function writeAuthCommand(dir: string, name: "doas" | "sudo", body: string): string {
+	const path = `${dir}/${name}`;
+	fs.writeFileSync(path, `#!/bin/sh\n${body}\n`);
+	fs.chmodSync(path, 0o755);
+	return path;
+}
+
+/**
+ * A stand-in that answers `-n` the way a cached credential or a `nopass` rule
+ * answers the real one (success, no password), and reports which executor ran
+ * it: only the interactive overlay gives the command a terminal on stdout.
+ */
+const CACHED_CREDENTIAL = `if [ "$1" = "-n" ]; then exit 0; fi
+if [ -t 1 ]; then printf 'overlay\\n'; else printf 'plain\\n'; fi`;
+
+/** A stand-in that needs the password, as the real command does without one. */
+const PROMPT_FOR_PASSWORD = `if [ "$1" = "-n" ]; then printf 'doas: Authentication required\\n'; exit 1; fi
+printf 'Password: ' > /dev/tty
+read -r _ < /dev/tty
+printf 'authenticated\\n'`;
+
 function makeSession(): ToolSession {
 	return {
 		cwd: os.tmpdir(),
@@ -103,5 +128,63 @@ describe("BashTool authentication terminal", () => {
 		const text = resultText(result as { content: Array<{ type: string; text?: string }> });
 
 		expect(text).toContain("no interactive terminal is available here");
+	});
+
+	it.skipIf(ptyUnavailable)("runs an auth command that will not prompt without a terminal", async () => {
+		// A `nopass` rule or a cached credential answers before the terminal is
+		// read, so the call runs on the plain executor and nothing claims it
+		// failed to authenticate.
+		const sudo = writeAuthCommand(tempDir.path(), "sudo", CACHED_CREDENTIAL);
+		const tool = new BashTool(makeSession());
+		const result = await tool.execute(
+			"call-nopasswd",
+			{ command: `${sudo} true`, timeout: 20 },
+			undefined,
+			undefined,
+			{
+				hasUI: false,
+			} as unknown as AgentToolContext,
+		);
+		const text = resultText(result as { content: Array<{ type: string; text?: string }> });
+
+		expect(text).toContain("plain");
+		// The overlay is not needed, so its absence is not worth a notice either.
+		expect(text).not.toContain("no interactive terminal is available here");
+	});
+
+	it.skipIf(ptyUnavailable)("keeps an auth command that will not prompt off the overlay", async () => {
+		const doas = writeAuthCommand(tempDir.path(), "doas", CACHED_CREDENTIAL);
+		const tool = new BashTool(makeSession());
+		const ctx = { hasUI: true, ui: headlessUi() } as unknown as AgentToolContext;
+		const result = await tool.execute(
+			"call-cached-credential",
+			{ command: `${doas} true`, timeout: 20 },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const text = resultText(result as { content: Array<{ type: string; text?: string }> });
+
+		expect(text).toContain("plain");
+		expect(text).not.toContain("overlay");
+	});
+
+	it.skipIf(ptyUnavailable)("opens the overlay for an auth command that must prompt", async () => {
+		const doas = writeAuthCommand(tempDir.path(), "doas", PROMPT_FOR_PASSWORD);
+		const tool = new BashTool(makeSession());
+		const ctx = { hasUI: true, ui: headlessUi() } as unknown as AgentToolContext;
+		// A password nobody types: the call reaches the prompt and runs out its
+		// deadline on the overlay's terminal.
+		const result = await tool.execute(
+			"call-prompt",
+			{ command: `${doas} true`, timeout: 4 },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const text = resultText(result as { content: Array<{ type: string; text?: string }> });
+
+		expect(text).toContain("Password:");
+		expect((result as { details?: { timedOut?: boolean } }).details?.timedOut).toBe(true);
 	});
 });

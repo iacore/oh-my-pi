@@ -40,7 +40,7 @@ import { truncateForPrompt } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
-import { bashNeedsAuthTerminal, canUseInteractiveBashPty } from "./bash-pty-selection";
+import { authPromptRequired, bashNeedsAuthTerminal, canUseInteractiveBashPty } from "./bash-pty-selection";
 import { resolveEvalBackends } from "./eval-backends";
 import { invalidateGithubCacheForBashCommand, invalidateGithubCacheForBashResult } from "./gh-cache-invalidation";
 import { serviceLogs, startService, type ServiceReady } from "../launch/services";
@@ -1137,7 +1137,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// through the interactive PTY exactly like an explicit `pty: true` call,
 		// so the user can answer the prompt.
 		const authPty = pty === undefined && bashNeedsAuthTerminal(command);
-		const ptyRequested = ptyRequestedFor(pty, command);
+		let ptyRequested = ptyRequestedFor(pty, command);
 
 		// URL paths resolve through the embedded shell's filesystem, within the
 		// tier this command was approved at. A URL cwd stays a URL: only that
@@ -1181,6 +1181,14 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				throw new ToolError(`Working directory is not a directory: ${commandCwd}`);
 			}
 		}
+
+		// A `doas`/`sudo` call answers from a persisted credential or a
+		// passwordless rule without asking anything, and the plain executor runs
+		// those exactly as well — so ask the auth command, through its own `-n`,
+		// whether it will prompt, and keep the interactive terminal for the calls
+		// that really do.
+		const authPrompt = authPty && (await authPromptRequired(command, { cwd: commandCwd, env: sessionEnv }));
+		if (authPty && !authPrompt) ptyRequested = false;
 
 		if (name !== undefined) {
 			// Only a readiness wait can outlast a steer; without `ready` the start
@@ -1662,7 +1670,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const interactiveUi = canUseInteractiveBashPty(ptyRequested, ctx) ? ctx?.ui : undefined;
 		if (ptyRequested && !interactiveUi) {
 			pendingNotices.push(
-				authPty
+				authPrompt
 					? "This command reads its password from the terminal, and no interactive terminal is available here (no UI, PI_NO_PTY, or headless); it ran without one and cannot authenticate. Ask the user to run it."
 					: "pty requested but unavailable in this environment; ran without a terminal",
 			);
@@ -1690,6 +1698,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					env: backendPreflight?.env,
 					artifactPath,
 					artifactId,
+					// A password prompt is a line or two, so it gets a small card;
+					// an explicit `pty: true` call keeps the full-pane console.
+					compact: authPrompt,
 				})
 			: // executeBash runs its OWN direnv preflight internally — pass the RAW
 				// command here so the unset prefix is not applied twice.
