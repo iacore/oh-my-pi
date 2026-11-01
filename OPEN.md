@@ -2,7 +2,7 @@
 
 <!-- item: doas-prompt-card state=blocked owner=- blocked=upstream -->
 
-## A `doas` command opens the console only when it will prompt — landed on `custom` (`69d241ef87`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-11-01)
+## A `doas` command opens the console only when it will prompt — landed on `custom` (`23a9693276`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-11-01)
 
 `doas`/`sudo` took the full-pane console for every call, including the ones a
 persisted credential or a `nopass` rule answers without reading the terminal.
