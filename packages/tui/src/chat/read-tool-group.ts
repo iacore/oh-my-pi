@@ -15,7 +15,7 @@ import {
 	splitReadQuery,
 } from "../tools/read";
 import { FILE_NAME_COLOR, formatStyledPath, PREVIEW_LIMITS, shortenPath } from "../render/render-utils";
-import { WidthAwareText, fileHyperlink, renderCodeCell, renderMarkdownCell } from "../render";
+import { WidthAwareText, fileHyperlink, renderCodeCell, renderMarkdownCell, urlHyperlinkAlways } from "../render";
 import { wrapTreeLine } from "../render/hanging-wrap";
 import { canonicalizeMessage } from "./thinking-display";
 import { internalUrlSchemeSpec, splitUrlScheme } from "../tools/url-scheme-host";
@@ -1278,6 +1278,10 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (filePath && options.linkPath) {
 			const linkOptions = options.line !== undefined ? { line: options.line } : undefined;
 			pathDisplay = fileHyperlink(options.linkPath, pathDisplay, linkOptions);
+		} else if (filePath && isUrlLikePath(target.path)) {
+			// Text mode needs the same URL fallback as the native head, or a
+			// transcript without native rendering keeps the URL unclickable.
+			pathDisplay = urlHyperlinkAlways(urlHref(target.path) ?? target.path, pathDisplay);
 		}
 		if (selectors) pathDisplay += theme.fg(paint.selectors, selectors);
 		if (options.correctedFrom) {
