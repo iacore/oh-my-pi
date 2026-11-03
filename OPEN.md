@@ -79,20 +79,23 @@ fork in the rail.
 
 <!-- item: read-row-url-link state=blocked owner=- blocked=upstream -->
 
-## A read row's URL is a link — landed on `custom` (`98695c73a0`), PR [#17598](https://github.com/can1357/oh-my-pi/pull/17598) open upstream (2026-11-01)
+## A read row's URLs are links — #17598 merged upstream, follow-up #17929 open
 
-A `read` of a URL draws as a path target, and the row took its link from
+A `read` of a URL draws as a path target, and a row took its link from
 `fileHref`, which links only an absolute filesystem path — so the URL showed as
 plain text and clicking it did nothing.
 
 - **Change**: `urlHref` in `tools/native-view.ts` builds an `http(s)` link
   (a bare `www.` gains its scheme), and the folded row's head plus every row of
   a grouped read fall back to it. Internal URLs and relative paths stay
-  unlinked.
+  unlinked. A second pass covers the summary line itself: `#formatPathValue`
+  linked only through `linkPath`, which no URL target has, so a collapsed
+  `Read 2 files` line kept both URLs dead even after the head was fixed
+  (#17929, landed on `custom` as `7317984a6a`).
 - **Verified**: `tool-result-control-sequences.test.ts` drives real
-  `ReadToolGroupComponent`s — a lone URL read carries the URL on its head, a
-  two-URL read carries each URL on its row's link span (19 tests with
-  `read-render.test.ts`).
+  `ReadToolGroupComponent`s — a lone URL read carries the URL on its head, and
+  the summary render now emits `OSC 8` for a URL and did not before the change
+  (the test fails with the source hunk reverted).
 - **Not proved**: the click in a Tern window. The row now emits the same kind
   of link the file rows already do, and Tern opens those through its link
   handling, but the click itself was not driven.
