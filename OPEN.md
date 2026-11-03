@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+<!-- item: out-of-credit-balance-ends-the-turn state=blocked owner=- blocked=upstream -->
+
+## An out-of-credit balance ends the turn — landed on `custom` (`14fa885eed`), PR [#17937](https://github.com/can1357/oh-my-pi/pull/17937) open upstream (2026-11-03)
+
+A 402 `insufficient_quota` ("the organization is out of credit, add more to
+continue") classifies as a usage limit, so the retry engine slept the
+30-minute `QUOTA_EXHAUSTED` heuristic on it — a guess at a reset clock an empty
+balance has none of. With `retry.maxDelayMs: 1800000` in `config.yml` the
+heuristic fits under the cap, so the fail-fast branch never fired: the session
+sat in a retry countdown, the error frame's Retry was a no-op for the whole
+backoff (`retry()` returns false while a saga is outstanding), and the error
+entry was later marked `recovered` by an unrelated turn.
+
+- **Change**: `isBillingCapUsageLimit(status, message)` in
+  `packages/ai/src/error/rate-limit.ts` (402 billing body, insufficient/prepaid
+  balance, credits wall, spend ceiling; the DashScope token throttle and
+  concurrency caps stay out), consulted through `exceedsDelayCap` in
+  `packages/coding-agent/src/session/turn-recovery.ts`. The fail-fast branch now
+  reports the provider's own message instead of the cap arithmetic.
+- **Verified**: the new `packages/coding-agent/test/agent-session-out-of-credit.test.ts`
+  (reverting the source makes it time out in the 30-minute sleep) and
+  `agent-session-retry-cap.test.ts` in the integration tree — 66 pass; the
+  retry-cap/recovery/fallback/advisor-usage-limit suites on `origin/main` — 364
+  pass; `packages/ai` error and rate-limit suites — 159 pass; `check:types`,
+  `oxlint` and `oxfmt` in both packages.
+- **Open**: the PR is open and conflict-free. `custom` carries a port of it
+  (the branch is based on `origin/main`, which conflicts with `custom` in
+  unrelated files).
+
 <!-- item: doas-prompt-card state=blocked owner=- blocked=upstream -->
 
 ## A `doas` command opens the console only when it will prompt — landed on `custom` (`23a9693276`), PR [#16103](https://github.com/can1357/oh-my-pi/pull/16103) open upstream (2026-11-01)
