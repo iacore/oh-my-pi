@@ -108,7 +108,7 @@ fork in the rail.
 
 <!-- item: read-row-url-link state=blocked owner=- blocked=upstream -->
 
-## A read row's URLs are links — #17598 merged upstream, follow-up #17929 open
+## A read row's URLs are links — #17598 and #17929 merged upstream, follow-up #18071 open
 
 A `read` of a URL draws as a path target, and a row took its link from
 `fileHref`, which links only an absolute filesystem path — so the URL showed as
@@ -116,15 +116,24 @@ plain text and clicking it did nothing.
 
 - **Change**: `urlHref` in `tools/native-view.ts` builds an `http(s)` link
   (a bare `www.` gains its scheme), and the folded row's head plus every row of
-  a grouped read fall back to it. Internal URLs and relative paths stay
-  unlinked. A second pass covers the summary line itself: `#formatPathValue`
-  linked only through `linkPath`, which no URL target has, so a collapsed
-  `Read 2 files` line kept both URLs dead even after the head was fixed
-  (#17929, landed on `custom` as `7317984a6a`).
+  a grouped read fall back to it (#17598). Internal URLs and relative paths
+  stay unlinked. A second pass covers the summary line itself:
+  `#formatPathValue` linked only through `linkPath`, which no URL target has,
+  so a collapsed `Read 2 files` line kept both URLs dead even after the head
+  was fixed (#17929, landed on `custom` as `7317984a6a`).
+- **Still split after those**: a row of an expanded group is drawn by
+  `fileRow`, which cuts the label at its last `/` — a dim directory, a strong
+  basename — and put the link on the basename alone. A URL therefore dimmed
+  everything before the last slash and linked only the final segment
+  (`…/issues/7517` linked `7517`), so a click on the visible URL did nothing.
+  A URL-shaped label now stays one span carrying the link across the whole
+  text, and a row with no `href` links to the URL itself (#18071, landed on
+  `custom` as `13d63a8fe2`).
 - **Verified**: `tool-result-control-sequences.test.ts` drives real
-  `ReadToolGroupComponent`s — a lone URL read carries the URL on its head, and
-  the summary render now emits `OSC 8` for a URL and did not before the change
-  (the test fails with the source hunk reverted).
+  `ReadToolGroupComponent`s — a lone URL read carries the URL on its head, the
+  summary render emits `OSC 8` for a URL, and a grouped read's URL row is one
+  span whose text and `href` are the whole URL; each test fails with its source
+  hunk reverted.
 - **Not proved**: the click in a Tern window. The row now emits the same kind
   of link the file rows already do, and Tern opens those through its link
   handling, but the click itself was not driven.
