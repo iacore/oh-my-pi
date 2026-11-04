@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- A read summary that names URLs (for example `Read 2 files` over two links) links each of them, so the terminal can open them instead of leaving them as dead text ([#17929](https://github.com/can1357/oh-my-pi/pull/17929) by [@iacore](https://github.com/iacore))
+- A read summary that names URLs (for example `Read 2 files` over two links) links each of them, on the summary line and across the whole URL in a row of the expanded group, so the terminal can open them instead of leaving them as dead text ([#17929](https://github.com/can1357/oh-my-pi/pull/17929) by [@iacore](https://github.com/iacore))
 
 ## [18.16.0] - 2026-11-02
 
