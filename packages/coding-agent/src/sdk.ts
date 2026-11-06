@@ -2329,6 +2329,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			hasUI: options.hasUI ?? false,
 			canPromptUser: options.interactivePrompts ?? options.hasUI ?? false,
 			advertiseHeadlessAsk: options.advertiseHeadlessAsk,
+			afkModeEnabled: () => session?.afkModeEnabled === true,
 			settingsApproval: options.settingsApproval === true && !isSubagentSession,
 			tuiTranscript,
 			// Explicit resolvers retain their existing pass-through contract. Ordinary

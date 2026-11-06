@@ -27,6 +27,7 @@ import { formatKeyHint, formatKeyHints } from "@oh-my-pi/pi-tui/app-keybindings"
 import { editorKey, editorKeys } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import askDescription from "../prompts/tools/ask.md" with { type: "text" };
+import askAfkMessage from "../prompts/tools/ask-afk.md" with { type: "text" };
 import askHeadlessForkMessage from "../prompts/tools/ask-headless-fork.md" with { type: "text" };
 import { vocalizer } from "../tts/vocalizer";
 
@@ -52,6 +53,8 @@ import { describeAttachedImagesForTextModel, shouldDescribeImagesForTextModel } 
 
 /** Returned to a headless fork's model instead of aborting its run. */
 const HEADLESS_FORK_ASK_ERROR = prompt.render(askHeadlessForkMessage);
+/** Returned while `/afk` is on: nobody is there, so waiting for an answer only stalls the turn. */
+const AFK_ASK_ERROR = prompt.render(askAfkMessage);
 
 export const OTHER_OPTION = "Other (type your own)";
 const CHAT_ABOUT_THIS_OPTION = "Chat about this";
@@ -656,6 +659,10 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		_onUpdate?: AgentToolUpdateCallback<AskToolDetails>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<AskToolDetails>> {
+		// AFK mode: the operator said they left, so an open dialog would wait for an
+		// answer that is not coming and hold the turn. Fail fast and let the model
+		// decide without them; the away notice already said so in the conversation.
+		if (this.session.afkModeEnabled?.()) throw new ToolError(AFK_ASK_ERROR);
 		// Headless fallback
 		if (!context?.hasUI || !context.ui) {
 			// A headless fork (`/tan`) keeps `ask` advertised only to share the parent's

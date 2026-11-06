@@ -229,6 +229,8 @@ export interface ToolSession {
 	canPromptUser?: boolean;
 	/** Keep `ask` in a headless fork's roster; execution still requires UI. */
 	advertiseHeadlessAsk?: boolean;
+	/** True while the operator announced they left (`/afk`): `ask` fails fast instead of waiting. */
+	afkModeEnabled?: () => boolean;
 	/** The user approves `cfg://` writes for this session (top-level TUI session only). */
 	settingsApproval?: boolean;
 	/**

@@ -201,6 +201,8 @@ import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import type { PlanModeState } from "../plan-mode/state";
 import goalModeContextPrompt from "../prompts/goals/goal-mode-context.md" with { type: "text" };
 import goalTodoContextPrompt from "../prompts/goals/goal-todo-context.md" with { type: "text" };
+import afkAwayNoticePrompt from "../prompts/system/afk-away-notice.md" with { type: "text" };
+import afkBackNoticePrompt from "../prompts/system/afk-back-notice.md" with { type: "text" };
 import anthropicUsageWrapUpPrompt from "../prompts/system/anthropic-usage-wrap-up.md" with { type: "text" };
 import autoContinuePrompt from "../prompts/system/auto-continue.md" with { type: "text" };
 import checkpointActiveNoticeTemplate from "../prompts/system/checkpoint-active-notice.md" with { type: "text" };
@@ -493,6 +495,9 @@ import { YieldQueue } from "./yield-queue";
 export * from "./agent-session-events";
 export * from "./agent-session-types";
 export type { AdvisorStats, AdvisorStatusOverviewEntry, PerAdvisorStat } from "./session-advisors";
+
+/** Custom-message type carrying the hidden `/afk` toggle notice. */
+const AFK_MODE_NOTICE_TYPE = "afk-mode-notice";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
 /** Assistant thinking+reply words a deferred auto-title waits for before retitling from context. */
@@ -1023,6 +1028,8 @@ export class AgentSession implements SettingsScope {
 	/** A single model-only notebook reminder queued for the current prompt generation. */
 	#experimentalContextNotesReminder: { prompt: string; generation: number } | undefined;
 	#planModeState: PlanModeState | undefined;
+	/** `/afk`: the operator said they left; `ask` fails fast instead of waiting. Session-only. */
+	#afkMode = false;
 	#vibeModeState: VibeModeState | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
@@ -7635,6 +7642,34 @@ export class AgentSession implements SettingsScope {
 			// does not inherit a stale `required` tool choice.
 			this.#toolChoiceQueue.removeByLabel("plan-mode-decision");
 		}
+	}
+
+	/** Whether the operator has announced they left (`/afk`). */
+	get afkModeEnabled(): boolean {
+		return this.#afkMode;
+	}
+
+	/**
+	 * Enter or leave AFK mode, and put the matching hidden notice in the
+	 * conversation. A live turn receives the notice as a steer (it lands at the
+	 * next tool-batch boundary); an idle session appends it for the next turn, so
+	 * the model knows either way and nothing waits on a turn that is not running.
+	 *
+	 * While the mode is on, `ask` throws instead of opening a dialog nobody will
+	 * answer — the missing answer is what stalls an unattended run.
+	 */
+	async setAfkMode(enabled: boolean): Promise<void> {
+		if (this.#afkMode === enabled) return;
+		this.#afkMode = enabled;
+		await this.sendCustomMessage(
+			{
+				customType: AFK_MODE_NOTICE_TYPE,
+				content: (enabled ? afkAwayNoticePrompt : afkBackNoticePrompt).trim(),
+				display: false,
+				attribution: "user",
+			},
+			this.isStreaming ? { deliverAs: "steer" } : { deliverAs: "nextTurn" },
+		);
 	}
 
 	getGoalModeState(): GoalModeState | undefined {

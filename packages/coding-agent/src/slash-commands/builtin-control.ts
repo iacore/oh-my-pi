@@ -40,6 +40,33 @@ function pauseWorkStatus(root: AgentSession): PauseWorkStatus {
 
 export const BUILTIN_CONTROL_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 	{
+		name: "afk",
+		icon: "ghost",
+		description:
+			"Toggle AFK mode: tell the agent the user has left, and make the ask tool fail instead of waiting for an answer",
+		getTuiAutocompleteDescription: runtime => (runtime.ctx.session.afkModeEnabled ? "AFK: on" : "AFK: off"),
+		handle: async (_command, runtime) => {
+			const enabled = !runtime.session.afkModeEnabled;
+			await runtime.session.setAfkMode(enabled);
+			await runtime.output(
+				enabled
+					? "AFK on: the ask tool now fails instead of waiting for an answer."
+					: "AFK off: the ask tool answers again.",
+			);
+			return commandConsumed();
+		},
+		handleTui: async (_command, runtime) => {
+			const enabled = !runtime.ctx.session.afkModeEnabled;
+			await runtime.ctx.session.setAfkMode(enabled);
+			runtime.ctx.showStatus(
+				enabled
+					? "AFK on: the ask tool now fails instead of waiting for an answer."
+					: "AFK off: the ask tool answers again.",
+			);
+			clearSubmittedText(runtime);
+		},
+	},
+	{
 		name: "force",
 		icon: "hammer",
 		description: "Force next turn to use a specific tool",
