@@ -9,6 +9,7 @@
 - Fixed multi-second UI freezes after every turn in long sessions caused by rescanning the whole provider context with every credential regex on each request; built-in patterns now skip text that contains none of their literal prefixes (1018 ms → 19 ms on a 716 KB context) ([#12666](https://github.com/can1357/oh-my-pi/pull/12666) by [@DarkPhilosophy](https://github.com/DarkPhilosophy)).
 ### Added
 
+- `/cd` is an alias of `/move`, so relocating the session to another directory reads like the shell command it mirrors.
 - `/continue` command resumes a response you interrupted with Esc — the model picks up exactly where it stopped, with no extra message added to the conversation; with nothing interrupted it sends an empty prompt instead of refusing.
 - `display.hideToolOutputDetails` renders each tool call as its own one-line summary and hides its output body, and `app.display.toggleDetail` moves that together with the thinking-block toggle from a single key ([#11840](https://github.com/can1357/oh-my-pi/pull/11840) by [@iacore](https://github.com/iacore)).
 - `OMP_ALLOW_HOME=1` keeps a session started in `~` there instead of auto-switching it to a temp directory, matching `--allow-home` for every launch path.
