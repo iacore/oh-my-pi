@@ -36,6 +36,10 @@ const RUNTIME_ONLY_PROVIDERS = new Set([
 	// limits, tariffs, or capability metadata — comes from the live snapshot
 	// via `lithosAiModelManagerOptions` and nothing is frozen into models.json.
 	"lithosai",
+	// Otari's roster is workspace-scoped and credential-scoped
+	// (otariModelManagerOptions discovers it live per key), so no rows are
+	// frozen into the bundled catalog.
+	"otari",
 	// Clef judges are a `bundle="always"` KDL seed that
 	// cloudflareWorkersAiModelManagerOptions serves at runtime; the bundled
 	// catalog gains the rows at the next regeneration.

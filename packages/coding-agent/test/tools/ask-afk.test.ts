@@ -21,7 +21,9 @@ function createSession(afk: (() => boolean) | undefined): ToolSession {
 	};
 }
 
-const questions = [{ id: "q1", question: "Which database?", options: [{ label: "SQLite" }] }];
+const html = `<form>
+  <label>Which database? <select name="q1"><option value="sqlite" selected>SQLite</option><option value="redis">Redis</option></select></label>
+</form>`;
 
 function createContext(select: () => Promise<string | undefined>): AgentToolContext {
 	return {
@@ -37,7 +39,7 @@ describe("ask tool in AFK mode", () => {
 		const tool = new AskTool(createSession(() => true));
 
 		await expect(
-			tool.execute("call-afk", { questions }, undefined, undefined, createContext(select)),
+			tool.execute("call-afk", { html }, undefined, undefined, createContext(select)),
 		).rejects.toBeInstanceOf(ToolError);
 		expect(select).not.toHaveBeenCalled();
 	});
@@ -48,12 +50,12 @@ describe("ask tool in AFK mode", () => {
 		const tool = new AskTool(createSession(() => afk));
 
 		afk = false;
-		await tool.execute("call-back", { questions }, undefined, undefined, createContext(select));
+		await tool.execute("call-back", { html }, undefined, undefined, createContext(select));
 		expect(select).toHaveBeenCalledTimes(1);
 
 		afk = true;
 		await expect(
-			tool.execute("call-away", { questions }, undefined, undefined, createContext(select)),
+			tool.execute("call-away", { html }, undefined, undefined, createContext(select)),
 		).rejects.toBeInstanceOf(ToolError);
 		expect(select).toHaveBeenCalledTimes(1);
 	});

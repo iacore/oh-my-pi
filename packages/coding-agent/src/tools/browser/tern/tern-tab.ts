@@ -1261,9 +1261,9 @@ export class TernTab implements InProcessRunTab {
 
 	// ─── Interaction ──────────────────────────────────────────────────────
 
-	/** Click the element's centre with a trusted mouse click. */
-	async click(selector: string): Promise<void> {
-		await this.clickIn(selector, null);
+	/** Click the element's centre with a trusted mouse click, optionally with another button or click count. */
+	async click(selector: string, options?: { button?: MouseButtonName; count?: number }): Promise<void> {
+		await this.clickIn(selector, null, options);
 	}
 
 	/** {@link click} inside `frame`, optionally with another button or click count. */
@@ -3025,8 +3025,8 @@ export class TernFrame {
 	}
 
 	/** Click inside the frame. */
-	async click(selector: string): Promise<void> {
-		await this.#tab.clickIn(selector, this.#path);
+	async click(selector: string, options?: { button?: MouseButtonName; count?: number }): Promise<void> {
+		await this.#tab.clickIn(selector, this.#path, options);
 	}
 
 	/** Fill inside the frame. */
@@ -3247,8 +3247,8 @@ export class TernPageFacade {
 		return await this.#tab.handlesFor(selector);
 	}
 
-	async click(selector: string): Promise<void> {
-		await this.#tab.click(selector);
+	async click(selector: string, options?: { button?: MouseButtonName; count?: number }): Promise<void> {
+		await this.#tab.click(selector, options);
 	}
 
 	async type(selector: string, text: string): Promise<void> {

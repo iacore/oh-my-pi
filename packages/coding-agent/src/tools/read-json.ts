@@ -2,7 +2,13 @@ import * as fs from "node:fs/promises";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { Shell } from "@oh-my-pi/pi-natives";
 import type { ReadToolDetails } from "@oh-my-pi/pi-tui/tools/read";
-import { DEFAULT_MAX_LINES, truncateHead, truncateMiddle, truncateTail } from "@oh-my-pi/pi-tui/tools/streaming-output";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	truncateHead,
+	truncateMiddle,
+	truncateTail,
+} from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import {
 	IMAGE_METADATA_HEADER_BYTES,
@@ -491,7 +497,7 @@ export async function readJson(
 	if (resource) resultBuilder.sourceInternal(resource.url);
 	else if (file) resultBuilder.sourcePath(file.absolutePath);
 	if (truncation.truncated) {
-		resultBuilder.truncation(truncation, { direction: "head" });
+		resultBuilder.truncation(truncation, { direction: "head", maxBytes: DEFAULT_MAX_BYTES });
 	}
 
 	return resultBuilder.done();

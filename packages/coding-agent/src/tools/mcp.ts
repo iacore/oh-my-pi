@@ -2,7 +2,7 @@ import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { getMCPConfigPath } from "@oh-my-pi/pi-utils";
 import { readMCPConfigFile } from "../mcp/config-writer";
-import { MCPManager } from "../mcp/manager";
+import { MCPManager, type MCPManagerApi } from "../mcp/manager";
 import type { ToolSession } from ".";
 
 const mcpSchema = type({
@@ -127,7 +127,7 @@ export class McpTool implements AgentTool<typeof mcpSchema, McpToolDetails> {
 	 * Union of the config-file servers (which include entries the manager never
 	 * loaded because they are disabled) and the manager's own known names.
 	 */
-	async #configuredServers(manager: MCPManager): Promise<NonNullable<McpToolDetails["servers"]>> {
+	async #configuredServers(manager: MCPManagerApi): Promise<NonNullable<McpToolDetails["servers"]>> {
 		const [userConfig, projectConfig] = await Promise.all([
 			readMCPConfigFile(getMCPConfigPath("user", this.session.cwd)),
 			readMCPConfigFile(getMCPConfigPath("project", this.session.cwd)),

@@ -1,5 +1,35 @@
 # Open items — omp-custom
 
+<!-- item: history-store-latent-damage state=open owner=- blocked=- -->
+
+## Prompt history survives damage outside the recalled window — landed on `custom` (2026-11-10), not upstreamed
+
+Every prompt warned "prompt history could not be saved; this prompt may be
+unavailable after restart" for a whole session (`~/.omp/logs/omp.2026-11-10.457704.log`,
+`HistoryStorage add failed` → `SQLITE_CORRUPT: fts5: corruption found reading blob
+3161095929857 from table "history_fts"`). `~/.omp/agent/history.db` carried a
+cross-linked page (`integrity_check`: `Tree 2 page 2 cell 0: 2nd reference to
+page 468`) reached through the FTS5 shadow tables, and nothing on the open path
+read that far: `#assertRecentWindowReadable` only fires on foreign values in the
+newest 100 rows, and `revealHiddenCorruption` only runs when the initializer
+throws.
+
+- **Fix**: `HistoryStorage` now runs `PRAGMA quick_check(1)` and the FTS5
+  `integrity-check` at open (`#verifyStoreIntegrity`). Page damage throws
+  `SQLITE_CORRUPT`, which the existing quarantine/`#salvage` path turns into a
+  fresh store holding every readable prompt; an intact store with a damaged
+  index rebuilds the index in place. A write that still fails with corruption
+  rebuilds the index once and retries before reporting.
+- **Verified**: `test/history-storage-sqlite-compat.test.ts` gained
+  "quarantines a store whose damage sits outside the recalled window", which
+  fails on the old code and passes now; the three history suites are 27 pass.
+  On a copy of the live damaged store the salvage kept all 4518 prompts and
+  `integrity_check` came back `ok`.
+- **Open**: the live store is repaired at the next launch, not now — the running
+  session (pid 457704) still holds the damaged inode. Rust and the native addon
+  are unverified here: `build-policy.py` denies a compiler in this checkout, so
+  `bun run build:native` and `bun run test:rs` have to run elsewhere.
+
 <!-- item: out-of-credit-balance-ends-the-turn state=blocked owner=- blocked=upstream -->
 
 ## An out-of-credit balance ends the turn — landed on `custom` (`14fa885eed`), PR [#17937](https://github.com/can1357/oh-my-pi/pull/17937) open upstream (2026-11-03)

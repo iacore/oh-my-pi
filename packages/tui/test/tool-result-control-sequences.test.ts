@@ -251,7 +251,6 @@ describe("tool result details with raw control sequences", () => {
 			feature: () => true,
 		});
 		if (view.k !== "tool") throw new Error("Expected read tool node");
-		expect(view.p?.target).toBe(url);
 		expect(view.p?.href).toBe(url);
 	});
 

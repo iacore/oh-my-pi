@@ -61,6 +61,7 @@ function createCloneStub(overrides?: {
 	lastAssistantText?: string;
 	activeToolNames?: string[];
 	enabledToolNames?: string[];
+	mountedToolNames?: string[];
 }) {
 	const messages: AgentMessage[] = [];
 	const appendMessage = vi.fn((message: AgentMessage) => {
@@ -73,6 +74,7 @@ function createCloneStub(overrides?: {
 		setTodoPhases: vi.fn(),
 		getActiveToolNames: vi.fn(() => overrides?.activeToolNames ?? ["read", "bash"]),
 		getEnabledToolNames: vi.fn(() => overrides?.enabledToolNames ?? overrides?.activeToolNames ?? ["read", "bash"]),
+		getMountedXdevToolNames: vi.fn(() => overrides?.mountedToolNames ?? []),
 		setActiveToolPresentation: vi.fn(async () => {}),
 		subscribe: vi.fn((l: (event: TanSessionEvent) => void) => {
 			listener = l;
@@ -98,6 +100,9 @@ function createCloneStub(overrides?: {
 	};
 }
 
+/** Harness directories outlive `createContext`, so the `afterEach` below removes them. */
+const harnessTempDirs: TempDir[] = [];
+
 function createContext(overrides?: {
 	isStreaming?: boolean;
 	model?: Model;
@@ -112,6 +117,7 @@ function createContext(overrides?: {
 	focusedAgentId?: string;
 }) {
 	const tempDir = TempDir.createSync("@omp-tan-controller-");
+	harnessTempDirs.push(tempDir);
 	const parentFile = path.join(tempDir.path(), "parent.jsonl");
 	// The clone nests inside the parent's artifact directory, like a subagent.
 	const cloneFile = path.join(parentFile.slice(0, -6), "clone.jsonl");
@@ -199,11 +205,12 @@ function createContext(overrides?: {
 	};
 }
 
-describe("TanCommandController", () => {
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
+afterEach(() => {
+	vi.restoreAllMocks();
+	for (const dir of harnessTempDirs.splice(0)) dir[Symbol.dispose]();
+});
 
+describe("TanCommandController", () => {
 	it("rejects empty work before forking", async () => {
 		const harness = createContext();
 		const forkSpy = vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
@@ -580,6 +587,7 @@ describe("TanCommandController", () => {
 			systemPrompt: ["system prompt"],
 			task: "park me",
 			tools: ["read", "bash"],
+			mountedTools: [],
 		});
 		// Parked (not unregistered) before dispose, then the disposed session is nulled
 		// out — the hub keeps the ref and reads its transcript from the session file.
@@ -589,8 +597,8 @@ describe("TanCommandController", () => {
 		expect(unregister).not.toHaveBeenCalled();
 	});
 
-	it("copies and persists the full enabled tool set", async () => {
-		const enabledToolNames = ["eval", "read", "bash"];
+	it("copies and persists the full enabled tool set and its xd:// devices", async () => {
+		const enabledToolNames = ["eval", "read", "bash", "ast_grep"];
 		const harness = createContext({ activeToolNames: ["eval"], enabledToolNames });
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
 		const appendSessionInit = vi.fn();
@@ -598,6 +606,7 @@ describe("TanCommandController", () => {
 			sessionManager: { appendSessionInit },
 			activeToolNames: ["eval"],
 			enabledToolNames,
+			mountedToolNames: ["ast_grep"],
 		});
 		const createAgentSessionSpy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue({
 			session: clone,
@@ -610,7 +619,9 @@ describe("TanCommandController", () => {
 		await run({ jobId: "job-123", signal: new AbortController().signal, reportProgress: async () => {} });
 
 		expect(createAgentSessionSpy.mock.calls[0]?.[0]?.toolNames).toEqual(enabledToolNames);
-		expect(appendSessionInit).toHaveBeenCalledWith(expect.objectContaining({ tools: enabledToolNames }));
+		expect(appendSessionInit).toHaveBeenCalledWith(
+			expect.objectContaining({ tools: enabledToolNames, mountedTools: ["ast_grep"] }),
+		);
 	});
 
 	it("restores the request when compaction summarizes an already-dispatched turn", async () => {

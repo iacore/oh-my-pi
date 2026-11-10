@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
 	checkpointWal,
 	getHistoryDbPath,
+	isSqliteCorruptionError,
 	logger,
 	openSqliteDatabaseSync,
 	postmortem,
@@ -116,6 +117,8 @@ export class HistoryStorage {
 	#addListener?: () => void;
 	#errorListener?: (error: unknown) => void;
 	#writeFailureReported = false;
+	/** A write failure already triggered an index rebuild; a second one in the same outage reports instead. */
+	#repairedAfterWriteFailure = false;
 
 	// Prepared statements
 	#upsertRowStmt: Statement;
@@ -156,6 +159,7 @@ END;
 				logger.warn("HistoryStorage FTS rebuild failed", { error: String(error) });
 			}
 		}
+		this.#verifyStoreIntegrity();
 		this.#assertRecentWindowReadable();
 		this.#recentStmt = this.#db.prepare(
 			`SELECT id, prompt, created_at, cwd, session_id, use_count FROM history WHERE ${readableRowClause("")} AND ${historyFilterClause("", 1)} ORDER BY created_at DESC, id DESC LIMIT ?3`,
@@ -269,9 +273,26 @@ ON CONFLICT(prompt) DO UPDATE SET
 		const trimmed = normalizePrompt(prompt);
 		if (!trimmed) return Promise.resolve();
 		const session = sessionId ?? this.#sessionResolver?.();
+		const row = { prompt: trimmed, cwd: cwd ?? undefined, sessionId: session || undefined };
 		try {
-			this.#insertBatch([{ prompt: trimmed, cwd: cwd ?? undefined, sessionId: session || undefined }]);
-		} catch (error) {
+			this.#insertBatch([row]);
+		} catch (caught) {
+			let error = caught;
+			// A damaged FTS index blocks every insert through its triggers. It holds
+			// nothing `history` does not, so rebuild it and retry once here rather
+			// than warn on every prompt for the rest of the process.
+			if (!this.#repairedAfterWriteFailure && isSqliteCorruptionError(error)) {
+				this.#repairedAfterWriteFailure = true;
+				try {
+					this.#ensureFtsIndexHealthy();
+					this.#insertBatch([row]);
+					this.#writeFailureReported = false;
+					this.#addListener?.();
+					return Promise.resolve();
+				} catch (retryError) {
+					error = retryError;
+				}
+			}
 			logger.error("HistoryStorage add failed", { error: String(error) });
 			if (!this.#writeFailureReported) {
 				this.#writeFailureReported = true;
@@ -279,6 +300,7 @@ ON CONFLICT(prompt) DO UPDATE SET
 			}
 			return Promise.resolve();
 		}
+		this.#repairedAfterWriteFailure = false;
 		this.#writeFailureReported = false;
 		this.#addListener?.();
 		return Promise.resolve();
@@ -439,6 +461,40 @@ ON CONFLICT(prompt) DO UPDATE SET
 			logger.debug("HistoryStorage collapsed rows during rebuild", { before: rows.length, after: winners.size });
 		}
 		return true;
+	}
+
+	/**
+	 * Damage below the rows is invisible to every read this open path performs:
+	 * a foreign page in the FTS5 shadow tables only surfaces on the first prompt
+	 * insert, so the editor warns "prompt history could not be saved" and keeps
+	 * losing prompts for the life of the process. Check both levels here.
+	 *
+	 * A damaged page anywhere in the store fails `quick_check`; throwing
+	 * SQLITE_CORRUPT hands the store to quarantine and {@link #salvage}, which
+	 * copies the prompts it can still decode into the replacement. A store whose
+	 * pages are sound but whose index disagrees with `history` is cheaper to fix
+	 * in place: the index holds nothing `history` does not.
+	 */
+	#verifyStoreIntegrity(): void {
+		const check = this.#db.query("PRAGMA quick_check(1)").get() as { quick_check: string };
+		if (check.quick_check !== "ok") {
+			throw Object.assign(new Error(`database disk image is malformed (${check.quick_check})`), {
+				code: "SQLITE_CORRUPT",
+			});
+		}
+		this.#ensureFtsIndexHealthy();
+	}
+
+	/** Rebuild the FTS index from `history` when its own integrity check fails. */
+	#ensureFtsIndexHealthy(): void {
+		try {
+			this.#db.run("INSERT INTO history_fts(history_fts) VALUES('integrity-check')");
+			return;
+		} catch (error) {
+			if (!isSqliteCorruptionError(error)) throw error;
+			logger.warn("HistoryStorage FTS index damaged; rebuilding it from history", { error: String(error) });
+		}
+		this.#db.run("INSERT INTO history_fts(history_fts) VALUES('rebuild')");
 	}
 
 	/**

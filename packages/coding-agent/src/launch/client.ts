@@ -8,6 +8,7 @@ import {
 	logger,
 	mkdtempInTempRoot,
 	postmortem,
+	toError,
 } from "@oh-my-pi/pi-utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
 import { canonicalProjectDir, daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
@@ -298,7 +299,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 				this.#bindSocket(await IpcConnection.connect(this.#endpoint, { framing: "lines", timeoutMs: 250 }));
 				return;
 			} catch (error) {
-				lastError = error instanceof Error ? error : new Error(String(error));
+				lastError = toError(error);
 				await Bun.sleep(CONNECT_RETRY_MS);
 			}
 		}
@@ -345,14 +346,14 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		try {
 			decoded = JSON.parse(line);
 		} catch (error) {
-			this.#rejectPending(error instanceof Error ? error : new Error(String(error)));
+			this.#rejectPending(toError(error));
 			return;
 		}
 		let message: DaemonWireMessage;
 		try {
 			message = parseDaemonWireMessage(decoded);
 		} catch (error) {
-			const parseError = error instanceof Error ? error : new Error(String(error));
+			const parseError = toError(error);
 			if (
 				typeof decoded === "object" &&
 				decoded !== null &&
@@ -382,7 +383,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		try {
 			pending.resolve(parseDaemonRpcResult(pending.operation, response.result));
 		} catch (error) {
-			pending.reject(error instanceof Error ? error : new Error(String(error)));
+			pending.reject(toError(error));
 		}
 	}
 

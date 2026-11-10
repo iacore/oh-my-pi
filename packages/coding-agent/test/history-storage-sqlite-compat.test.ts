@@ -319,3 +319,51 @@ INSERT INTO session_recaps (session_id, cwd, recap, created_at) VALUES ('session
 		db.close();
 	}
 });
+
+// Damage outside `history` is invisible to every read the open path used to
+// perform: with the newest prompts readable, the store opened clean and the
+// first write through a damaged index warned "prompt history could not be
+// saved" on every prompt for the life of the process. The open now checks the
+// whole file, so such a store is quarantined and salvaged like any other.
+it("quarantines a store whose damage sits outside the recalled window", async () => {
+	tempDir = TempDir.createSync("@omp-history-storage-latent-");
+	const dbPath = tempDir.join("history.db");
+	HistoryStorage.open(dbPath);
+	HistoryStorage.close();
+	const seed = new Database(dbPath);
+	seed.run(`
+CREATE TABLE session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE session_recaps (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, cwd TEXT NOT NULL, recap TEXT NOT NULL, created_at INTEGER NOT NULL);
+INSERT INTO session_titles VALUES ('session-a', 'Title A', 1700000000);
+INSERT INTO session_recaps (session_id, cwd, recap, created_at) VALUES ('session-a', '/project', 'Recap A', 1700000000);
+	`);
+	seed.run(
+		"INSERT INTO history (prompt, created_at, cwd, session_id) VALUES ('readable prompt', 1700000000, '/project', 'session-a')",
+	);
+	const pageSize = seed.query<{ page_size: number }, []>("PRAGMA page_size").get()!.page_size;
+	seed.run("PRAGMA wal_checkpoint(TRUNCATE)");
+	seed.close();
+
+	// Destroy the page holding the recap, leaving `history` and its window intact.
+	const bytes = fs.readFileSync(dbPath);
+	const at = bytes.indexOf(Buffer.from("Recap A"));
+	expect(at).toBeGreaterThan(-1);
+	const damagedPage = Math.floor(at / pageSize);
+	const fd = fs.openSync(dbPath, "r+");
+	fs.writeSync(fd, Buffer.alloc(pageSize, 0xff), 0, pageSize, damagedPage * pageSize);
+	fs.closeSync(fd);
+
+	const storage = HistoryStorage.open(dbPath);
+	expect(storage.getRecent(10).map(entry => entry.prompt)).toEqual(["readable prompt"]);
+	await storage.add("after recovery", "/project", "session-b");
+	expect(storage.getRecent(10).map(entry => entry.prompt)).toEqual(["after recovery", "readable prompt"]);
+	HistoryStorage.close();
+
+	expect(fs.readdirSync(tempDir.path()).some(name => /^history\.db\.corrupt-/.test(name))).toBe(true);
+	const db = new Database(dbPath, { readonly: true });
+	try {
+		expect(db.query<{ quick_check: string }, []>("PRAGMA quick_check").get()?.quick_check).toBe("ok");
+	} finally {
+		db.close();
+	}
+});

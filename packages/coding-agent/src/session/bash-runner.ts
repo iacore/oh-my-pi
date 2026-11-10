@@ -38,6 +38,21 @@ interface PendingBashMessage {
 	message: BashExecutionMessage;
 }
 
+export interface BashExecuteOptions {
+	excludeFromContext?: boolean;
+	useUserShell?: boolean;
+	pty?: BashPtyOptions;
+	/**
+	 * Run on the interactive PTY overlay instead of the headless executor.
+	 * A `doas`/`sudo` command run by the user's `!` shell needs a terminal
+	 * that forwards the typed password, exactly as the bash tool's own
+	 * auth-terminal routing does.
+	 */
+	interactivePty?: { ui: BashInteractiveUi; compact?: boolean };
+	/** Receives the `bashExecution` message the run is recorded as, once it is persisted or queued for a mid-turn flush. */
+	onRecorded?: (message: BashExecutionMessage) => void;
+}
+
 /** Ownership snapshot spanning a session or branch transition. */
 export interface BashSessionTransition {
 	oldTarget: BashSessionTarget;
@@ -79,18 +94,7 @@ export class BashRunner {
 	async executeBash(
 		command: string,
 		onChunk?: (chunk: string) => void,
-		options?: {
-			excludeFromContext?: boolean;
-			useUserShell?: boolean;
-			pty?: BashPtyOptions;
-			/**
-			 * Run on the interactive PTY overlay instead of the headless executor.
-			 * A `doas`/`sudo` command run by the user's `!` shell needs a terminal
-			 * that forwards the typed password, exactly as the bash tool's own
-			 * auth-terminal routing does.
-			 */
-			interactivePty?: { ui: BashInteractiveUi; compact?: boolean };
-		},
+		options?: BashExecuteOptions,
 	): Promise<BashResult> {
 		const target = this.#captureSessionTarget();
 		let targetTransferred = false;
@@ -352,7 +356,7 @@ export class BashRunner {
 		result: BashResult,
 		options?: { excludeFromContext?: boolean },
 	): BashExecutionMessage {
-		const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
+		const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).minimized(result.minimized).get();
 		return {
 			role: "bashExecution",
 			command,
@@ -407,13 +411,18 @@ export class BashRunner {
 		target: BashSessionTarget,
 		command: string,
 		result: BashResult,
-		options?: { excludeFromContext?: boolean },
+		options?: BashExecuteOptions,
 	): Promise<void> {
 		const message = this.#createMessage(command, result, options);
 		if (this.#host.isStreaming() && target === this.#sessionTarget) {
 			this.#pendingMessages.push({ target, message });
-			return;
+		} else {
+			await this.#appendOwnedMessage(target, message);
 		}
-		await this.#appendOwnedMessage(target, message);
+		try {
+			options?.onRecorded?.(message);
+		} catch (error) {
+			logger.error("bash onRecorded callback failed", { error: String(error) });
+		}
 	}
 }

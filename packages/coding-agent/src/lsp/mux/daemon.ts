@@ -10,7 +10,7 @@
  * back to a process-local spawn.
  */
 import { IpcConnection, ipcEndpoint } from "@oh-my-pi/pi-natives";
-import { getTempRoot, logger, ptree } from "@oh-my-pi/pi-utils";
+import { getTempRoot, logger, ptree, toError } from "@oh-my-pi/pi-utils";
 import { encodeMessageFrame, MessageFramer } from "../../jsonrpc/message-framing";
 import { daemonClientForProject } from "../../launch/client";
 import { describeQuietly, stopQuietly, waitReady } from "../../launch/ensure";
@@ -105,7 +105,7 @@ function requestOnLink(
 					message = JSON.parse(text);
 				} catch (error) {
 					cleanup();
-					reject(error instanceof Error ? error : new Error(String(error)));
+					reject(toError(error));
 					return;
 				}
 				if (message.id !== request.id) continue;
@@ -117,7 +117,7 @@ function requestOnLink(
 		} catch (error) {
 			cleanup();
 			link.connection.destroy();
-			reject(error instanceof Error ? error : new Error(String(error)));
+			reject(toError(error));
 		}
 	};
 	const close = () => {
