@@ -246,6 +246,22 @@ counted as output, so "thinking started, Esc" lost the words.
 - **Where Esc actually lands**: a live turn holds the working row, so Escape
   takes the loader branch, not `isStreaming`; the restore leads
   `restoreQueuedMessagesToEditor({ abort: true })`.
+- **Restore and retraction are one decision** (2026-11-11, `5143114aa4`,
+  `ed45a74922`, `81fea8e1d8`, `008ed26f52`, `2a90328301`, pushed to the same
+  PR): the composer read `getInterruptiblePrompt()` at Esc while the retraction
+  re-read the field at the aborted `message_end`, so a thinking block closing in
+  between left the composer holding words the transcript still kept, and a value
+  that outlived its turn came back turns later — Escape in that session refilled
+  the composer with the opening prompt of a turn two turns before the one it
+  stopped. The held prompt now records the user message that opened it and reads
+  absent once another prompt joins behind it; `abort()` latches it so the words
+  handed back and the branch cut are one value, and takes `retake` so the
+  setting being off, an empty submit that drains the queue and a focused-session
+  stop never retract a turn the composer was not given. The guard's first two
+  forms were too strict and `test/agent-session-interrupt-empty-turn.test.ts`
+  caught both: an aborted assistant placeholder already sits behind the message,
+  and a prompt whose turn has not streamed yet has no message in the live
+  context at all.
 - **Verified**: `test/agent-session-interruptible-prompt.test.ts` (3, including
   a reopen of the saved session file) and the escape/interrupt suites on both
   trees; `tsgo`, `oxlint`, `oxfmt --check` clean. Live over a pty: Esc inside a
