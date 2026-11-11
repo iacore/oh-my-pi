@@ -1,5 +1,29 @@
 # Open items — omp-custom
 
+<!-- item: ask-form-pointer-guard state=blocked owner=- blocked=upstream -->
+
+## An `ask` form's Other field takes typing after a click — landed on `custom` (`ef3ad91910`), PR [#18845](https://github.com/can1357/oh-my-pi/pull/18845) open upstream (2026-11-11)
+
+A composer draft keeps every key for itself until ↑/↓ releases
+`AskDialogInputGuard`. `HtmlFormDialog` acted on pointer events (the Other row,
+a text well, Submit, Next, Note) without releasing that guard, so a click put
+focus on the clicked field while the draft still received the keystrokes: the
+Other field could not be typed into at all, and the footer still read "typing
+edits your prompt". `AskDialog` already releases the guard on a pointer
+interaction; the form dialog did not.
+
+- **Fix**: a pointer action or a row click in `handleNativeEvent` calls
+  `#releaseGuardForPointer()` before it acts. Cancel and Hide keep their
+  behaviour.
+- **Verified**: two regression tests in `packages/tui/test/html-form.test.ts`
+  (click Other then type; click a text well then type) fail without the fix and
+  pass with it; `html-form.test.ts` 43 pass on the PR branch, the controller
+  form tests 32 and the ask-dialog suites 86 pass on `custom`, `check:ts` clean.
+  A live Tern window was not driven.
+- **Landing**: branch `fix/ask-form-pointer-guard` in
+  `~/.omp/wt/ask-form-pointer-guard-ef3ad91910` off `origin/main`
+  `679691a781`; the same change is committed on `custom` as `ef3ad91910`.
+
 <!-- item: pty-command-keeps-composer-until-prompt state=blocked owner=- blocked=upstream -->
 
 ## A `!` command takes the composer's keyboard only at a prompt — landed on `custom` (`d8c4d98122`), PR [#18844](https://github.com/can1357/oh-my-pi/pull/18844) open upstream (2026-11-11)
