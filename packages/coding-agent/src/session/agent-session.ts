@@ -12234,15 +12234,17 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		return this.#heldInterruptiblePrompt();
 	}
 
-	/** The held prompt, while no later prompt has joined the conversation behind
+	/** The held prompt, while no other prompt has joined the conversation behind
 	 *  it — a steered message in between means the turn is no longer the one it
-	 *  opened. A prompt that outlived its turn reads as absent, so no later
-	 *  interrupt can hand back words from a turn that has already been answered. */
+	 *  opened. The prompt's own message may not be in the live context yet when
+	 *  the interrupt lands, which is why the check asks what the latest user
+	 *  message is rather than where this one sits. */
 	#heldInterruptiblePrompt(): InterruptiblePrompt | undefined {
 		const prompt = this.#interruptiblePrompt;
 		const opened = this.#interruptiblePromptMessage;
 		if (!prompt || !opened) return undefined;
-		return this.#latestUserMessage() === opened ? prompt : undefined;
+		const latestUser = this.#latestUserMessage();
+		return latestUser === undefined || latestUser === opened ? prompt : undefined;
 	}
 
 	/** The last user message of the live context: the question the next turn answers. */
