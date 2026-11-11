@@ -1213,6 +1213,13 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	#promptDropped: ((prompt: DroppedPrompt) => void) | undefined;
 	/** The typed prompt whose turn is in flight; see {@link getInterruptiblePrompt}. */
 	#interruptiblePrompt: InterruptiblePrompt | undefined;
+	/** The user message that prompt opened. The prompt is the conversation's
+	 *  current question only while that message is still the live context's last
+	 *  one, so a prompt that outlived its turn is never handed back or retracted. */
+	#interruptiblePromptMessage: AgentMessage | undefined;
+	/** Prompt latched when a user interrupt starts, so the editor restore and the
+	 *  turn retraction it belongs to read one decision; see {@link abort}. */
+	#latchedRetake: InterruptiblePrompt | undefined;
 	/** Messages of a turn an interrupt took back off the transcript; their queued
 	 *  `message_end` commit must not write them under the branch it cut. */
 	readonly #retractedTurnMessages = new WeakSet<AgentMessage>();
@@ -4544,7 +4551,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	 */
 	#restoreInterruptedTurn(assistantMessage: AssistantMessage): boolean {
 		const restore = this.#promptDropped;
-		const retake = this.#interruptiblePrompt;
+		const retake = this.#latchedRetake;
 		if (!restore || !retake) return false;
 		if (assistantMessage.stopReason !== "aborted" || !isUserInterruptAbort(assistantMessage)) return false;
 
@@ -4554,6 +4561,9 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		// A synthetic prompt dispatches as `developer`, and a steered message opens
 		// no turn: neither is the typed prompt this restores.
 		if (userMessage?.role !== "user" || userMessage.steering) return false;
+		// The words handed back and the branch cut have to describe the same turn:
+		// the latch was validated against this message when the interrupt started.
+		if (this.#interruptiblePromptMessage !== userMessage) return false;
 
 		// Without a persisted entry the message never reached the session file, so
 		// there is no branch to cut — leave that case to the drop-before-dispatch
@@ -4916,7 +4926,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 			// tool call begins — the model has committed to an answer, and Esc is a
 			// stop, not a retake of the prompt.
 			if (delta.type === "thinking_end" || delta.type === "text_start" || delta.type === "toolcall_start") {
-				this.#interruptiblePrompt = undefined;
+				this.#clearInterruptiblePrompt();
 			}
 		} else if (event.type === "message_end" && event.message.role === "assistant") {
 			const assistant = event.message as AssistantMessage;
@@ -9095,6 +9105,9 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 				? { text: typedText, images: options?.images }
 				: undefined;
 		this.#interruptiblePrompt = interruptiblePrompt;
+		// The prompt is handed back only while this message is still the live
+		// context's last one; see getInterruptiblePrompt.
+		this.#interruptiblePromptMessage = interruptiblePrompt ? message : undefined;
 		const refusalBeforeDispatch = this.#costCapRefusal;
 		try {
 			dispatched = await this.#promptWithMessage(message, expandedText, {
@@ -9123,7 +9136,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		} finally {
 			// #promptWithMessage spans the run, so reaching here means the turn
 			// settled: there is nothing left to hand back.
-			if (this.#interruptiblePrompt === interruptiblePrompt) this.#interruptiblePrompt = undefined;
+			if (this.#interruptiblePrompt === interruptiblePrompt) this.#clearInterruptiblePrompt();
 			// Clean up residual eager-todo directive if the prompt never consumed it
 			// (e.g., compaction aborted, validation failed).
 			this.#toolChoiceQueue.removeByLabel("eager-todo");
@@ -12212,13 +12225,33 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	 * its attachments: what a host puts back in the composer when it interrupts
 	 * that turn, so an Esc is an edit rather than a retype. Undefined while no
 	 * turn runs, for prompts the session did not take from the operator
-	 * (synthetic and agent-attributed work), and once the turn's first thinking
-	 * block has ended — from then on Esc stops an answer that has begun, it does
-	 * not ask for the prompt back. An interrupt inside that window drops the turn
-	 * it opened and reports the prompt through {@link setPromptDropped}.
+	 * (synthetic and agent-attributed work), once something else has joined the
+	 * conversation behind it — a steered message between the prompt and the
+	 * interrupt means the turn is no longer the one that prompt opened — and once
+	 * the turn's first thinking block has ended, so Esc stops an answer that has
+	 * begun instead of asking for the prompt back. An interrupt inside that
+	 * window drops the turn it opened and reports the prompt through
+	 * {@link setPromptDropped}.
 	 */
 	getInterruptiblePrompt(): InterruptiblePrompt | undefined {
-		return this.#interruptiblePrompt;
+		return this.#heldInterruptiblePrompt();
+	}
+
+	/** The held prompt, while the message it opened is still the last message of
+	 *  the live context. A prompt that outlived its turn reads as absent, so no
+	 *  later interrupt can hand back words from a turn that has already been
+	 *  answered. */
+	#heldInterruptiblePrompt(): InterruptiblePrompt | undefined {
+		const prompt = this.#interruptiblePrompt;
+		const opened = this.#interruptiblePromptMessage;
+		if (!prompt || !opened) return undefined;
+		const messages = this.agent.state.messages;
+		return messages[messages.length - 1] === opened ? prompt : undefined;
+	}
+
+	#clearInterruptiblePrompt(): void {
+		this.#interruptiblePrompt = undefined;
+		this.#interruptiblePromptMessage = undefined;
 	}
 
 	/**
@@ -12228,6 +12261,11 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	 * and surfaces verbatim on the aborted assistant message's `errorMessage`, so
 	 * the transcript can distinguish a deliberate user interrupt from an opaque
 	 * abort. Omit it for internal/lifecycle aborts.
+	 *
+	 * `retake` (default on) is the host's answer to "may this interrupt take the
+	 * turn back": when it is off, the turn stays in the transcript and its prompt
+	 * is not offered to the editor, so a host that has already decided not to
+	 * hand the words back cannot leave them off the branch either.
 	 */
 	async abort(options?: {
 		goalReason?: "interrupted" | "internal";
@@ -12236,8 +12274,16 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		deliverQueuedMessages?: boolean;
 		/** Internal `/compact` startup keeps the manual-compaction marker alive while aborting the active turn. */
 		preserveCompaction?: boolean;
+		/** Whether a user interrupt may retract the turn it stopped and hand its prompt back. */
+		retake?: boolean;
 	}): Promise<void> {
 		const userInterrupt = options?.reason === USER_INTERRUPT_LABEL;
+		// One decision, read once: the editor restore that precedes this call and
+		// the retraction that follows it must agree on the prompt, or the composer
+		// is refilled with words the transcript still holds (or the turn vanishes
+		// without them coming back). A delta that lands after Esc can close the
+		// window, so the value is latched here rather than re-read at message_end.
+		this.#latchedRetake = userInterrupt && options?.retake !== false ? this.#heldInterruptiblePrompt() : undefined;
 		this.#pendingAbortErrorId = userInterrupt ? AIError.create(AIError.Flag.UserInterrupt) : undefined;
 		// Latch only when the interrupt stops something; an idle Esc would otherwise fold
 		// every later background completion for the rest of the session.
@@ -12348,6 +12394,8 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		} finally {
 			this.#abortInProgress = false;
 			this.#drainStrandedQueuedMessages();
+			// The turn this latch belonged to is settled; a later abort starts over.
+			this.#latchedRetake = undefined;
 			if (forceQueuedDelivery) this.#forcedQueuedMessageDeliveryCount--;
 			this.#abortUnwinds.delete(unwind.promise);
 			unwind.resolve();

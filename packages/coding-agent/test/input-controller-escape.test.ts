@@ -644,7 +644,7 @@ describe("InputController escape behavior", () => {
 		expect(spies.abort).toHaveBeenCalledTimes(1);
 		// The Esc interrupt threads a user-facing reason so the aborted turn and its
 		// synthetic tool results read as a deliberate interrupt, not "Request was aborted".
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 	});
 
 	it("suspends a streaming loop iteration and pauses the loop", () => {
@@ -658,7 +658,7 @@ describe("InputController escape behavior", () => {
 		controller.setupKeyHandlers();
 		editor.onEscape?.();
 
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 		expect(pauseLoop).toHaveBeenCalledTimes(1);
 		expect(spies.cancelPendingSubmission).toHaveBeenCalledTimes(1);
 	});
@@ -760,7 +760,7 @@ describe("InputController escape behavior", () => {
 		expect(firstTestEscapeHandler).toHaveBeenCalledTimes(1);
 		expect(latestTestEscapeHandler).toHaveBeenCalledTimes(1);
 		expect(spies.abort).toHaveBeenCalledTimes(1);
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 	});
 
 	it("dismisses an active /btw panel before aborting the main stream", () => {
@@ -843,7 +843,7 @@ describe("InputController escape behavior", () => {
 		editor.onEscape?.();
 
 		expect(spies.abort).toHaveBeenCalledTimes(1);
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 		expect(spies.showStatus).not.toHaveBeenCalledWith("Press Esc again within 2s to cancel streaming.");
 	});
 
@@ -863,7 +863,7 @@ describe("InputController escape behavior", () => {
 
 		expect(spies.cancelPendingSubmission).not.toHaveBeenCalled();
 		expect(spies.abort).toHaveBeenCalledTimes(1);
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 		expect(spies.showStatus).not.toHaveBeenCalledWith("Press Esc again within 2s to cancel streaming.");
 	});
 
@@ -1057,7 +1057,7 @@ describe("InputController escape behavior", () => {
 
 		expect(editor.getText()).toBe("fix the failing test");
 		expect(spies.requestRender).toHaveBeenCalled();
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 	});
 
 	it("hands the interrupted prompt back when Esc stops the live turn under the working row", () => {
@@ -1072,7 +1072,7 @@ describe("InputController escape behavior", () => {
 		editor.onEscape?.();
 
 		expect(editor.getText()).toBe("fix the failing test");
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 	});
 
 	it("restores the interrupted prompt ahead of messages queued behind it", () => {
@@ -1118,7 +1118,8 @@ describe("InputController escape behavior", () => {
 		editor.onEscape?.();
 
 		expect(editor.getText()).toBe("");
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		// The turn stays too: a restore the host refused must not become a silent cut.
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: false });
 	});
 
 	it("aborts a live turn with nothing to restore when the prompt was not the operator's", () => {
@@ -1131,7 +1132,7 @@ describe("InputController escape behavior", () => {
 		editor.onEscape?.();
 
 		expect(editor.getText()).toBe("draft");
-		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL, retake: true });
 	});
 
 	it("ignores double-Esc when the action is disabled", () => {
