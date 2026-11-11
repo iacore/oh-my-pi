@@ -4561,9 +4561,6 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		// A synthetic prompt dispatches as `developer`, and a steered message opens
 		// no turn: neither is the typed prompt this restores.
 		if (userMessage?.role !== "user" || userMessage.steering) return false;
-		// The words handed back and the branch cut have to describe the same turn:
-		// the latch was validated against this message when the interrupt started.
-		if (this.#interruptiblePromptMessage !== userMessage) return false;
 
 		// Without a persisted entry the message never reached the session file, so
 		// there is no branch to cut — leave that case to the drop-before-dispatch
