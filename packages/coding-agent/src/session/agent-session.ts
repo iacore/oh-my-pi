@@ -12225,7 +12225,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	 * its attachments: what a host puts back in the composer when it interrupts
 	 * that turn, so an Esc is an edit rather than a retype. Undefined while no
 	 * turn runs, for prompts the session did not take from the operator
-	 * (synthetic and agent-attributed work), once something else has joined the
+	 * (synthetic and agent-attributed work), once another prompt has joined the
 	 * conversation behind it — a steered message between the prompt and the
 	 * interrupt means the turn is no longer the one that prompt opened — and once
 	 * the turn's first thinking block has ended, so Esc stops an answer that has
@@ -12237,16 +12237,24 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		return this.#heldInterruptiblePrompt();
 	}
 
-	/** The held prompt, while the message it opened is still the last message of
-	 *  the live context. A prompt that outlived its turn reads as absent, so no
-	 *  later interrupt can hand back words from a turn that has already been
-	 *  answered. */
+	/** The held prompt, while no later prompt has joined the conversation behind
+	 *  it — a steered message in between means the turn is no longer the one it
+	 *  opened. A prompt that outlived its turn reads as absent, so no later
+	 *  interrupt can hand back words from a turn that has already been answered. */
 	#heldInterruptiblePrompt(): InterruptiblePrompt | undefined {
 		const prompt = this.#interruptiblePrompt;
 		const opened = this.#interruptiblePromptMessage;
 		if (!prompt || !opened) return undefined;
+		return this.#latestUserMessage() === opened ? prompt : undefined;
+	}
+
+	/** The last user message of the live context: the question the next turn answers. */
+	#latestUserMessage(): AgentMessage | undefined {
 		const messages = this.agent.state.messages;
-		return messages[messages.length - 1] === opened ? prompt : undefined;
+		for (let index = messages.length - 1; index >= 0; index--) {
+			if (messages[index].role === "user") return messages[index];
+		}
+		return undefined;
 	}
 
 	#clearInterruptiblePrompt(): void {
