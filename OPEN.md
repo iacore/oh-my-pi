@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+<!-- item: pty-command-keeps-composer-until-prompt state=blocked owner=- blocked=upstream -->
+
+## A `!` command takes the composer's keyboard only at a prompt — landed on `custom` (`d8c4d98122`), PR [#18844](https://github.com/can1357/oh-my-pi/pull/18844) open upstream (2026-11-11)
+
+Since #17213 every key typed while a `!` command ran on zsh/fish went to its
+headless PTY, so `!grit push` (or any command that never reads stdin) swallowed
+the next draft and left the bytes unread in the tty queue.
+
+- **Fix**: `CommandController.#executeBashCommand` keeps the last 256 raw PTY
+  bytes and hands the keyboard to the command only while that tail ends
+  mid-line after trailing CSI/OSC escapes are dropped
+  (`ptyAwaitsInput`); a newline or a progress meter's `\r` gives the composer
+  back. `editor.nativeKeyPassthrough` and the forwarding listener flip
+  together, so in the other state no key is consumed.
+- **Trade taken**: a command that reads stdin without printing anything
+  (`!cat` on a redirected file) no longer receives composer keys, because
+  nothing distinguishes it from a command that is working. Asking the kernel
+  whether a process is blocked on the tty is not portable to macOS.
+- **Verified**: `test/modes/controllers/bash-command.test.ts` is 16 pass on both
+  trees (the #17210 case now emits its prompt first; a new case drives a
+  `grit push`-shaped run through working → prompt → echoed answer → working);
+  `check:types`, oxlint and `oxfmt --check` clean. A live TUI smoke of the gate
+  was not run.
+- **Landing**: branch `fix/pty-composer-input` in
+  `~/.omp/wt/pty-composer-input-679691a781` off `origin/main` `679691a781`; the
+  integration commit was built in
+  `~/.omp/wt/integrate-pty-composer-5b17b56583` off `custom` (a direct merge
+  conflicted on upstream drift) and fast-forwarded into `omp-custom`.
+
 <!-- item: history-store-latent-damage state=open owner=- blocked=- -->
 
 ## Prompt history survives damage outside the recalled window — landed on `custom` (2026-11-10), not upstreamed
