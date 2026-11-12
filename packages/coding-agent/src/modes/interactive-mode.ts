@@ -255,7 +255,9 @@ import { getSessionAccentAnsi, getSessionAccentHex } from "@oh-my-pi/pi-tui/them
 import { messageHasDisplayableThinking } from "@oh-my-pi/pi-tui/chat/thinking-display";
 import type { TokenRateMeter } from "../utils/token-rate";
 import {
+	type BlockedKind,
 	disposeProgramStatus,
+	holdBlockedStatus,
 	initProgramStatus,
 	resendProgramStatus,
 	setProgramStatusEnabled,
@@ -3390,7 +3392,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.planModeEnabled || this.planModePaused) return;
 		if (!this.goalModeEnabled || this.goalModePaused) return;
 		if (this.#goalSuppressNextContinuation) return;
-		if (this.#goalOpenWorkAllBlocked()) return;
 		if (this.#pendingSubmittedInput) return;
 		if (this.editor.getText().trim().length > 0) return;
 		if ((this.editor.pendingImages?.length ?? 0) > 0) return;
@@ -3416,7 +3417,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				if ((this.editor.pendingImages?.length ?? 0) > 0) return;
 				const latestState = this.session.getGoalModeState();
 				if (!latestState?.enabled || latestState.goal.status !== "active") return;
-				if (this.#goalOpenWorkAllBlocked()) return;
 				this.#pendingGoalContinuationTurns++;
 				this.onInputCallback(
 					this.startPendingSubmission({
@@ -3429,18 +3429,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.syncIdleMaintenanceView();
 			}
 		}, 800);
-	}
-
-	/** A blocked-only todo list has no work the agent can advance without another turn. */
-	#goalOpenWorkAllBlocked(): boolean {
-		const phases = this.session.getTodoPhases();
-		if (nextActionableTask(phases)) return false;
-		for (const phase of phases) {
-			for (const task of phase.tasks) {
-				if (task.status === "blocked") return true;
-			}
-		}
-		return false;
 	}
 
 	#cancelGoalContinuation(): void {
@@ -3569,13 +3557,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		// child process that Esc can no longer reach.
 		this.#abortLoopCondition();
 		this.#loopConditionAbort = controller;
+		const sessionId = this.sessionManager.getSessionId();
 		let verdict: LoopConditionVerdict;
 		try {
 			verdict = await evaluateLoopCondition(condition, {
 				cwd: this.sessionManager.getCwd(),
 				timeoutMs: cfgLoopConditionTimeoutMs.get(settings),
 				signal: controller.signal,
-				sessionId: this.sessionManager.getSessionId(),
+				sessionId,
+				isSessionCurrent: () => this.sessionManager.getSessionId() === sessionId,
 			});
 		} finally {
 			if (this.#loopConditionAbort === controller) this.#loopConditionAbort = undefined;
@@ -5137,6 +5127,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		for (const [id, component] of livePendingTools) {
 			this.pendingTools.set(id, component);
 		}
+		this.#eventController.reconcileReadGroupAfterRebuild();
 		// During the pre-streaming window — after `startPendingSubmission` has
 		// optimistically rendered the user's message but before the user
 		// `message_start` event lands it in `session` entries — any rebuild
@@ -5175,8 +5166,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
 			case "abandoned":
 				return theme.fg("error", `${prefix}${checkbox.unchecked} ${chalk.strikethrough(todo.content)}`) + marker;
-			case "blocked":
-				return theme.fg("warning", `${prefix}${checkbox.unchecked} ${todo.content} (blocked)`) + marker;
 			default:
 				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
 				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
@@ -5196,13 +5185,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Auto-complete any open todo (pending/in_progress/blocked) whose content
+	 * Auto-complete any open todo (pending/in_progress) whose content
 	 * matches a subagent that has finished successfully. Fires on every observer
 	 * `onChange` so the visual state stays in sync with subagent lifecycle
-	 * without requiring the agent to issue a follow-up `todo`. A todo `block`ed
-	 * while waiting on a detached subagent is included: that subagent completing
-	 * is exactly the unblock signal, and blocked todos are excluded from the stop
-	 * reminder, so leaving it blocked would strand it silently. Failed and aborted
+	 * without requiring the agent to issue a follow-up `todo`. Failed and aborted
 	 * subagents are intentionally NOT auto-completed — those stay open so the user
 	 * (or the next agent turn) can decide what to do.
 	 *
@@ -5223,13 +5209,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		const next: TodoPhase[] = this.todoPhases.map(phase => ({
 			name: phase.name,
 			tasks: phase.tasks.map(task => {
-				if (task.status !== "pending" && task.status !== "in_progress" && task.status !== "blocked") {
-					return task;
-				}
+				if (task.status !== "pending" && task.status !== "in_progress") return task;
 				if (!todoMatchesAnyDescription(task.content, completedDescs)) return task;
 				mutated = true;
-				// Drop any blocker note along with the blocked status — the wait the
-				// note described is over.
 				return { content: task.content, status: "completed" as const };
 			}),
 		}));
@@ -5515,12 +5497,10 @@ export class InteractiveMode implements InteractiveModeContext {
 					? "success del"
 					: todo.status === "abandoned"
 						? "error del"
-						: todo.status === "blocked"
-							? "warning"
-							: todo.status === "in_progress" || isMatched(todo)
-								? "accent"
-								: "dim";
-			const label: TspSpan[] = [span(todo.status === "blocked" ? `${todo.content} (blocked)` : todo.content, token)];
+						: todo.status === "in_progress" || isMatched(todo)
+							? "accent"
+							: "dim";
+			const label: TspSpan[] = [span(todo.content, token)];
 			const notes = todo.notes?.length ?? 0;
 			if (notes > 0) label.push(span(` +${notes}`, "dim em"));
 			return { id, label, icon: done ? "check" : "circle" };
@@ -5570,7 +5550,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			title: multiPhase ? formatPhaseDisplayName(phase.name, phaseIndex + 1) : phase.name,
 			collapsed: phase.tasks.every(isClosedTodo) || undefined,
 			items: phase.tasks.map((todo, taskIndex): TspChecklistItem => {
-				const note = todo.blocker ?? todo.notes?.at(-1);
+				const note = todo.notes?.at(-1);
 				return {
 					id: `${phaseIndex}.${taskIndex}`,
 					text: todo.content,
@@ -5579,11 +5559,9 @@ export class InteractiveMode implements InteractiveModeContext {
 							? "done"
 							: todo.status === "abandoned"
 								? "dropped"
-								: todo.status === "blocked"
-									? "blocked"
-									: todo.status === "in_progress" || isMatched(todo)
-										? "active"
-										: "pending",
+								: todo.status === "in_progress" || isMatched(todo)
+									? "active"
+									: "pending",
 					note,
 				};
 			}),
@@ -8035,7 +8013,9 @@ export class InteractiveMode implements InteractiveModeContext {
 			() => requestDelivered.resolve(),
 			() => requestDelivered.resolve(),
 		);
-		const choice = await choicePromise;
+		// The plan waits on the user's approval, after the turn that proposed it has ended.
+		const release = holdBlockedStatus({ state: "blocked", kind: "permission", msg: `Review plan: ${details.title}` });
+		const choice = await choicePromise.finally(release);
 		if (this.#pendingPlanReview === pending) this.#pendingPlanReview = undefined;
 		const remote = pending.remote;
 		const closePlanReview = (): void => {
@@ -8205,7 +8185,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	async #promptAutoQaConsent(): Promise<boolean | null> {
 		const pool = InteractiveMode.#AUTOQA_CONSENT_PROMPTS;
 		const [headline, body] = pool[Math.floor(Math.random() * pool.length)];
-		const choice = await this.#extensionUiController.showCollabAwareSelector(`${headline}\n${body}`, ["Yes", "No"]);
+		const choice = await this.#extensionUiController.showCollabAwareSelector(
+			`${headline}\n${body}`,
+			["Yes", "No"],
+			undefined,
+			{ kind: "permission" },
+		);
 		return choice === "Yes";
 	}
 
@@ -8245,6 +8230,7 @@ export class InteractiveMode implements InteractiveModeContext {
 					timedOut = true;
 				},
 			},
+			{ kind: "permission" },
 		);
 		if (timedOut) return "timeout";
 		if (choice === CFG_APPROVE_SESSION) return "session";
@@ -10066,7 +10052,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		title: string,
 		options: ExtensionUISelectItem[],
 		dialogOptions?: InteractiveSelectorDialogOptions,
-		extra?: { slider?: HookSelectorSlider },
+		extra?: { slider?: HookSelectorSlider; kind?: BlockedKind },
 	): Promise<string | undefined> {
 		return this.#extensionUiController.showHookSelector(title, options, dialogOptions, extra);
 	}

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { getTempRoot, tempSubpath } from "@oh-my-pi/pi-utils";
 import { stageRunnerScript } from "../src/eval/runner-cache";
 
 // stageRunnerScript memoizes the staged path per cache directory, but the warm
@@ -20,16 +21,18 @@ describe("stageRunnerScript re-validation", () => {
 	// Mirrors stageRunnerScript's per-uid directory naming.
 	function stagingDir(name: string) {
 		const uid = process.getuid?.();
-		return path.join(os.tmpdir(), uid === undefined ? name : `${name}-${uid}`);
+		return tempSubpath(uid === undefined ? name : `${name}-${uid}`);
 	}
 
 	afterEach(() => {
 		// Covers the shared name, the per-uid dir, mkdtemp fallbacks, and decoys:
 		// every name is unique per pid/test/time, so a prefix match is safe.
-		const tmp = os.tmpdir();
-		for (const entry of fs.readdirSync(tmp)) {
-			if (dirs.some(name => entry.startsWith(name))) {
-				fs.rmSync(path.join(tmp, entry), { recursive: true, force: true });
+		// Staging lives under the omp temp root; only the decoys sit in the plain tmpdir.
+		for (const root of [getTempRoot(), os.tmpdir()]) {
+			for (const entry of fs.readdirSync(root)) {
+				if (dirs.some(name => entry.startsWith(name))) {
+					fs.rmSync(path.join(root, entry), { recursive: true, force: true });
+				}
 			}
 		}
 		dirs.length = 0;
