@@ -36,7 +36,14 @@ import { redactSensitiveInObject } from "../providers/transform-messages";
 import type { ImageContent, Model, Usage } from "../types";
 import { getRetryAfterMsFromHeaders } from "../utils/retry-after";
 import { openaiDecisionsWire } from "./openai-decisions";
-import { liquidWire, openrouterDecisionsWire, referencedImageAssets, typesafeWire, workersAiWire } from "./systemone";
+import {
+	inceptionDecisionsWire,
+	liquidWire,
+	openrouterDecisionsWire,
+	referencedImageAssets,
+	typesafeWire,
+	workersAiWire,
+} from "./systemone";
 import {
 	type Answer,
 	type Judge,
@@ -59,6 +66,7 @@ const JUDGMENT_WIRES = {
 	"workers-ai-systemone": workersAiWire,
 	"openai-decisions": openaiDecisionsWire,
 	"liquid-systemone": liquidWire,
+	"inception-decisions": inceptionDecisionsWire,
 } as const satisfies Partial<Record<Api, JudgmentWire>>;
 
 /** APIs {@link NativeJudge} can serve. */
