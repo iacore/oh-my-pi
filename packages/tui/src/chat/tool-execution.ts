@@ -1359,7 +1359,7 @@ export class ToolExecutionComponent extends Container {
 				title: this.#toolLabel,
 				target: this.#activitySummary().detail,
 			});
-			const folded = this.#toolOutputDetailsHidden ? foldToolOutputDetails(shown) : shown;
+			const folded = this.#detailsFolded() ? foldToolOutputDetails(shown) : shown;
 			return withHidden(folded, !this.#toolActivityVisible);
 		});
 	}
@@ -1370,6 +1370,12 @@ export class ToolExecutionComponent extends Container {
 		if (started === undefined) return undefined;
 		const ended = status === "running" ? undefined : this.#executionEndedAtNow;
 		return Math.max(0, Math.round((ended ?? performance.now()) - started));
+	}
+
+	/** Whether the transcript-wide Ctrl+H fold is in force for this call: a call the user opened
+	 *  keeps its body, because the terminal's click arrives as that same expanded state. */
+	#detailsFolded(): boolean {
+		return this.#toolOutputDetailsHidden && !this.#expanded;
 	}
 
 	/**
@@ -1648,6 +1654,10 @@ export class ToolExecutionComponent extends Container {
 	setToolOutputDetailsHidden(hidden: boolean): void {
 		if (this.#toolOutputDetailsHidden === hidden) return;
 		this.#toolOutputDetailsHidden = hidden;
+		// A fold is transcript-wide, so an open call gives up its reveal: otherwise Ctrl+H would
+		// leave that one call's output on screen, and the next un-fold would resurrect an expansion
+		// the user had already hidden.
+		if (hidden) this.#expanded = false;
 		this.#updateDisplay();
 	}
 
