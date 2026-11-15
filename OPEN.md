@@ -960,7 +960,7 @@ Each branch was rebased, its review threads answered, and the valid findings fix
 Branches live on `g` (iacore/oh-my-pi); scratch worktrees under `/var/tmp/omp-pr/` (never `/tmp`,
 a 5.8G tmpfs that fills with a dozen `bun install`s).
 
-- #11840 `feat/tool-output-details` `34ca735b76` — `display.hideToolOutputDetails`; `34ca735b76` reopens a folded call when its one-row summary is clicked (the fold no longer outranks the call's own expansion) — landing on `custom` as `fcbb991437`.
+- #11840 `feat/tool-output-details` `d19c30957f` — `display.hideToolOutputDetails`; `d19c30957f` reopens a folded call when its one-row summary is clicked (the fold no longer outranks the call's own expansion) — landing on `custom` as `fcbb991437`.
 - #16103 `fix/doas-auth-terminal` `ce28e911db` — auth-terminal routing; the same fix rides `custom` as `0303e0f488`.
 - #15460 `autolearn/scribe-upstream` `26ca79e48c` — session-settle scribe.
 - #15258 `feat-paste-image-path-attachment` `59f9a15029`.
