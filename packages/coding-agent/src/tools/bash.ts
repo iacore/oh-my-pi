@@ -38,7 +38,8 @@ import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import type { ShellTrace } from "@oh-my-pi/pi-wire";
-import { checkBashInterception } from "./bash-interceptor";
+import { checkBashInterception, type InterceptionResult } from "./bash-interceptor";
+import { type BashRedirectPlan, planBashRedirect } from "./bash-redirect";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
 import { authPromptRequired, bashNeedsAuthTerminal, canUseInteractiveBashPty } from "./bash-pty-selection";
 import { resolveEvalBackends } from "./eval-backends";
@@ -599,35 +600,96 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 	/** Bash reads `skill://` paths through its shell filesystem, including as a working directory. */
 	readonly readsSkillUris = true;
 	/**
-	 * The interceptor message for a call, checking the raw command and the one after a leading
-	 * `cd … &&` so the wrapper hides neither shell-navigation rules nor the dedicated-tool command.
+	 * The `bashInterceptor` hit for a call, checking the raw command and the one after a
+	 * leading `cd … &&` so the wrapper hides neither shell-navigation rules nor the
+	 * dedicated-tool command. A hit selects the tool that replaces the command; it never
+	 * refuses the call.
 	 */
 	#interception(
 		rawCommand: string,
 		command: string,
 		name: string | undefined,
 		toolNames: string[],
-	): string | undefined {
+	): InterceptionResult | undefined {
 		if (!cfgBashInterceptorEnabled.get(this.session.settings)) return undefined;
 		const rules = cfgBashInterceptorPatterns.get(this.session.settings).filter(rule => !name || rule.tool !== "bash");
 		for (const commandToCheck of rawCommand === command ? [command] : [rawCommand, command]) {
 			const interception = checkBashInterception(commandToCheck, toolNames, rules, rawCommand);
-			if (interception.block) return interception.message ?? "Command blocked";
+			if (interception.block) return interception;
 		}
 		return undefined;
+	}
+
+	/**
+	 * The dedicated tool call that replaces this command, or `undefined` when the shell
+	 * should run it: a service, a hoisted `cd`, a mapping that is not exact, or a tool the
+	 * session does not register.
+	 */
+	#redirectPlan(
+		rawCommand: string,
+		command: string,
+		name: string | undefined,
+		toolNames: string[],
+	): BashRedirectPlan | undefined {
+		if (name !== undefined || rawCommand !== command) return undefined;
+		const plan = planBashRedirect(
+			command,
+			this.#interception(rawCommand, command, name, toolNames)?.suggestedTool,
+			toolNames,
+		);
+		if (!plan || !this.session.getToolByName?.(plan.tool)) return undefined;
+		return plan;
+	}
+
+	/**
+	 * Run the dedicated tool a `bashInterceptor` rule named, in place of the shell command.
+	 *
+	 * A redirect is deliberately limited to a command the shell would run identically in
+	 * the session cwd, and to read-only tools, so no approval the call lacked is bypassed.
+	 */
+	async #redirect(
+		rawCommand: string,
+		command: string,
+		name: string | undefined,
+		toolCallId: string,
+		signal: AbortSignal | undefined,
+		context: AgentToolContext | undefined,
+	): Promise<AgentToolResult<BashToolDetails> | undefined> {
+		const toolNames = context?.toolNames ?? [];
+		const plan = this.#redirectPlan(rawCommand, command, name, toolNames);
+		if (!plan) return undefined;
+		const tool = this.session.getToolByName?.(plan.tool);
+		if (!tool) return undefined;
+		const result = await tool.execute(
+			`${toolCallId}-redirect`,
+			plan.args,
+			signal,
+			undefined,
+			this.session.getToolContext?.() ?? context,
+		);
+		const text = result.content
+			.map(block => (block.type === "text" ? block.text : ""))
+			.join("\n")
+			.trimEnd();
+		const isError = result.isError === true;
+		return {
+			content: [{ type: "text", text: text.length > 0 ? `→ ${plan.label}\n\n${text}` : `→ ${plan.label}` }],
+			details: { wallTimeNoticeEmitted: false, ...(isError ? { exitCode: 1 } : {}) },
+			isError,
+		};
 	}
 
 	readonly approval = (args: unknown, ctx?: AgentToolContext): ToolApprovalDecision => {
 		const input = (args ?? {}) as Partial<BashToolInput>;
 		const rawCommand = input.command;
 		const command = typeof rawCommand === "string" ? rawCommand : "";
-		// An intercepted call is refused outright; asking first would only approve a doomed call.
-		const cwdCommand = input.cwd ? command : (extractLeadingCdTarget(command)?.rest ?? command);
+		// An interceptor hit never refuses the call: it either runs the dedicated read-only
+		// tool instead (which is a read, so it needs no prompt) or falls through to the
+		// shell and the ordinary gate below.
 		const name = typeof input.name === "string" ? blankToUndefined(input.name) : undefined;
-		const interception = this.#interception(command, cwdCommand, name, ctx?.toolNames ?? []);
-		if (interception) {
-			return { tier: "exec", override: true, policy: "deny", reason: interception.replace(/^Blocked:\s*/u, "") };
-		}
+		const cwdCommand = input.cwd ? command : (extractLeadingCdTarget(command)?.rest ?? command);
+		const plan = this.#redirectPlan(command, cwdCommand, name, ctx?.toolNames ?? []);
+		if (plan) return { tier: "read", override: true, policy: "allow", reason: `Redirected to the ${plan.tool} tool` };
 		const rawPatterns = cfgBashPatterns.get(this.session.settings);
 		const patternRules = getBashApprovalPatternRules(rawPatterns);
 		const shell = cfgBashAllowCompoundCommands.get(this.session.settings)
@@ -1314,8 +1376,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
 		}
 
-		const interception = this.#interception(rawCommand, command, name, ctx?.toolNames ?? []);
-		if (interception) throw new ToolError(interception);
+		const redirected = await this.#redirect(rawCommand, command, name, toolCallId, signal, ctx);
+		if (redirected) return redirected;
 
 		if (cfgWorktreeClone.get(this.session.settings)) {
 			command = rewriteGitWorktreeAdd(command, resolveCliEntryCmd());

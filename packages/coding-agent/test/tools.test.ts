@@ -2472,20 +2472,35 @@ function b() {
 			expect(result.isError).toBe(true);
 		});
 
-		it("should block built-in interceptor commands when enabled with default patterns", async () => {
+		it("should redirect built-in interceptor commands to the dedicated tool with default patterns", async () => {
+			const readCalls: Array<Record<string, unknown>> = [];
+			const readTool = {
+				name: "read",
+				label: "Read",
+				execute: async (_toolCallId: string, args: Record<string, unknown>) => {
+					readCalls.push(args);
+					return { content: [{ type: "text", text: "redirected file contents" }] };
+				},
+			} as unknown as AgentTool;
 			const interceptedBashTool = wrapToolWithMetaNotice(
-				new BashTool(createTestToolSession(testDir, Settings.isolated({ "bashInterceptor.enabled": true }))),
+				new BashTool(
+					createTestToolSession(testDir, Settings.isolated({ "bashInterceptor.enabled": true }), {
+						getToolByName: name => (name === "read" ? readTool : undefined),
+					}),
+				),
 			);
 
-			await expect(
-				interceptedBashTool.execute(
-					"test-call-8-intercept-default",
-					{ command: "cat test.txt" },
-					undefined,
-					undefined,
-					createTestToolContext(["read"]),
-				),
-			).rejects.toThrow(/Use the `read` tool instead of cat\/head\/tail/);
+			const result = await interceptedBashTool.execute(
+				"test-call-8-intercept-default",
+				{ command: "cat test.txt" },
+				undefined,
+				undefined,
+				createTestToolContext(["read"]),
+			);
+
+			expect(readCalls).toEqual([{ path: "test.txt" }]);
+			expect(getTextOutput(result)).toContain("→ read test.txt");
+			expect(getTextOutput(result)).toContain("redirected file contents");
 		});
 
 		it("should allow an explicit empty interceptor pattern list", async () => {
@@ -2515,7 +2530,7 @@ function b() {
 			expect(getTextOutput(result)).toContain("empty means empty");
 		});
 
-		it("should honor custom bash interceptor patterns", async () => {
+		it("should run a custom interceptor match instead of refusing it", async () => {
 			const interceptedBashTool = wrapToolWithMetaNotice(
 				new BashTool(
 					createTestToolSession(
@@ -2533,15 +2548,19 @@ function b() {
 					),
 				),
 			);
-			await expect(
-				interceptedBashTool.execute(
-					"test-call-8-intercept-custom",
-					{ command: "customcmd foo" },
-					undefined,
-					undefined,
-					createTestToolContext(["grep"]),
-				),
-			).rejects.toThrow(/Use the `grep` tool for customcmd\./);
+			// `customcmd` matches the rule but has no exact mapping onto `grep`, so the shell
+			// runs it — and reports the shell's own failure, not a policy message.
+			const result = await interceptedBashTool.execute(
+				"test-call-8-intercept-custom",
+				{ command: "customcmd foo" },
+				undefined,
+				undefined,
+				createTestToolContext(["grep"]),
+			);
+
+			expect(result.isError).toBe(true);
+			expect(getTextOutput(result)).toContain("customcmd");
+			expect(getTextOutput(result)).not.toContain("Use the `grep` tool for customcmd.");
 		});
 
 		it("should resolve local:// destination paths for mv commands", async () => {

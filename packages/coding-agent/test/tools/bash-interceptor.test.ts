@@ -12,6 +12,7 @@ import { checkBashInterception } from "@oh-my-pi/pi-coding-agent/tools/bash-inte
 
 function createBashTool(rules: BashInterceptorRule[]): BashTool {
 	const session = {
+		cwd: process.cwd(),
 		settings: Settings.isolated({
 			"bashInterceptor.enabled": true,
 			"bashInterceptor.patterns": rules,
@@ -25,38 +26,88 @@ function createBashTool(rules: BashInterceptorRule[]): BashTool {
 	return new BashTool(session);
 }
 
-describe("BashTool interception", () => {
-	it("checks the original command before leading cd normalization", async () => {
-		const tool = createBashTool([
-			{
-				pattern: "^\\s*cd\\s+",
-				tool: "bash",
-				message: "Do not hide directory changes in the command string.",
-			},
+function resultText(result: { content: Array<{ type: string; text?: string }> }): string {
+	return result.content.map(block => (block.type === "text" ? (block.text ?? "") : "")).join("\n");
+}
+
+/** A `bash` tool whose session exposes one fake read tool, recording the args it receives. */
+function createRedirectTool(rules: BashInterceptorRule[]) {
+	const readCalls: Array<Record<string, unknown>> = [];
+	const readTool = {
+		name: "read",
+		label: "Read",
+		execute: async (_toolCallId: string, args: Record<string, unknown>) => {
+			readCalls.push(args);
+			return { content: [{ type: "text", text: "package.json contents" }] };
+		},
+	} as unknown as Tool;
+	const session = {
+		cwd: process.cwd(),
+		settings: Settings.isolated({
+			"bashInterceptor.enabled": true,
+			"bashInterceptor.patterns": rules,
+			"async.enabled": false,
+			"bash.autoBackground.enabled": false,
+			"bash.autoBackground.thresholdMs": 60_000,
+		}),
+		getSessionFile: () => null,
+		getToolByName: (name: string) => (name === "read" ? readTool : undefined),
+	} as unknown as ToolSession;
+
+	return { tool: new BashTool(session), readCalls };
+}
+
+describe("bash interceptor redirect", () => {
+	it("runs the dedicated tool instead of refusing the command", async () => {
+		const { tool, readCalls } = createRedirectTool([
+			{ pattern: "^\\s*cat\\s+", tool: "read", message: "Use read instead." },
 		]);
 
-		await expect(
-			tool.execute("tool-call", { command: "cd packages/coding-agent && echo ok" }, undefined, undefined, {
-				toolNames: ["bash"],
-			} as AgentToolContext),
-		).rejects.toThrow("Do not hide directory changes");
+		const result = await tool.execute("tool-call", { command: "cat package.json" }, undefined, undefined, {
+			toolNames: ["read"],
+		} as AgentToolContext);
+
+		expect(readCalls).toEqual([{ path: "package.json" }]);
+		expect(resultText(result)).toContain("→ read package.json");
+		expect(resultText(result)).toContain("package.json contents");
+		expect(resultText(result)).not.toContain("Use read instead.");
 	});
 
-	it("checks the cwd-normalized command after leading cd normalization", async () => {
-		const tool = createBashTool([
-			{
-				pattern: "^\\s*cat\\s+",
-				tool: "read",
-				message: "Use read instead.",
-			},
+	it("runs the shell command when the match has no exact mapping", async () => {
+		// `echo` matches the rule, but nothing maps `echo` onto `read`; the command runs.
+		const { tool, readCalls } = createRedirectTool([
+			{ pattern: "^\\s*echo\\s+", tool: "read", message: "Use read instead." },
 		]);
 
-		const command = "cd packages/coding-agent && cat package.json";
-		await expect(
-			tool.execute("tool-call", { command }, undefined, undefined, {
-				toolNames: ["read"],
-			} as AgentToolContext),
-		).rejects.toThrow(`Use read instead.\n\nOriginal command: ${command}`);
+		const result = await tool.execute("tool-call", { command: "echo shell-ran" }, undefined, undefined, {
+			toolNames: ["read"],
+		} as AgentToolContext);
+
+		expect(readCalls).toEqual([]);
+		expect(resultText(result)).toContain("shell-ran");
+	});
+
+	it("runs a command whose rule targets bash instead of hiding a directory change", async () => {
+		const tool = createBashTool([
+			{ pattern: "^\\s*cd\\s+", tool: "bash", message: "Do not hide directory changes in the command string." },
+		]);
+
+		const result = await tool.execute("tool-call", { command: "cd . && echo ok" }, undefined, undefined, {
+			toolNames: ["bash"],
+		} as AgentToolContext);
+
+		expect(resultText(result)).toContain("ok");
+		expect(resultText(result)).not.toContain("Do not hide directory changes");
+	});
+
+	it("runs the shell command after leading cd normalization instead of refusing it", async () => {
+		const tool = createBashTool([{ pattern: "^\\s*cat\\s+", tool: "read", message: "Use read instead." }]);
+
+		const result = await tool.execute("tool-call", { command: "cd . && echo normalized" }, undefined, undefined, {
+			toolNames: ["read"],
+		} as AgentToolContext);
+
+		expect(resultText(result)).toContain("normalized");
 	});
 });
 
@@ -393,6 +444,16 @@ describe("pre-approval refusal gate", () => {
 			getSessionFile: () => null,
 			isToolActive: (name: string) => toolNames.includes(name),
 			getToolContext: () => ({ toolNames, hasUI: true, ui: {} }) as unknown as AgentToolContext,
+			// An interceptor hit redirects instead of refusing, so the session has to offer
+			// the tool the redirect targets.
+			getToolByName: (name: string) =>
+				name === "read"
+					? ({
+							name: "read",
+							label: "Read",
+							execute: async () => ({ content: [{ type: "text", text: "redirected read" }] }),
+						} as unknown as Tool)
+					: undefined,
 			settings: Settings.isolated({
 				"async.enabled": true,
 				"launch.enabled": true,
@@ -422,14 +483,19 @@ describe("pre-approval refusal gate", () => {
 		toolNames: ["read", "grep", "bash"],
 	} as unknown as AgentToolContext;
 
-	it("rejects an intercepted command in always-ask mode without prompting", async () => {
+	it("redirects an intercepted command in always-ask mode without prompting", async () => {
 		const select = vi.fn(async () => "Approve");
 		const wrapper = makeWrapper(new BashTool(createSession()), select);
 
-		await expect(
-			wrapper.execute("call-1", { command: "cat package.json" }, undefined, undefined, alwaysAskCtx),
-		).rejects.toThrow("Use the `read` tool instead of cat/head/tail");
+		const result = await wrapper.execute(
+			"call-1",
+			{ command: "cat package.json" },
+			undefined,
+			undefined,
+			alwaysAskCtx,
+		);
 
 		expect(select).not.toHaveBeenCalled();
+		expect(JSON.stringify(result)).toContain("redirected read");
 	});
 });

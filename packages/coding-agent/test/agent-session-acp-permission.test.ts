@@ -332,31 +332,35 @@ it("explicit yolo still gates tools whose per-tool policy requires a prompt", as
 	expect(bashTool.executeCalls).toBe(1);
 });
 
-it("rejects intercepted bash command before invoking ACP requestPermission", async () => {
+it("runs intercepted bash command without invoking ACP requestPermission", async () => {
 	const bridge = makeBridge({ outcome: "selected", optionId: "allow_once", kind: "allow_once" });
 	const permissionSpy = spyOn(bridge, "requestPermission");
 	const settings = Settings.isolated({ "bashInterceptor.enabled": true });
+	const fakeRead = makeFakeTool("read");
 	const realBashTool = new BashTool({
 		...makeToolSession(bridge),
 		settings,
 		isToolActive: (name: string) => name === "read" || name === "bash",
+		// The redirect only runs in place of the shell when the session exposes its target.
+		getToolByName: (name: string) => (name === "read" ? fakeRead : undefined),
 	});
-	session = await createSession([realBashTool as AgentTool, makeFakeTool("read")], bridge, {
+	session = await createSession([realBashTool as AgentTool, fakeRead], bridge, {
 		"bashInterceptor.enabled": true,
 	});
 
 	await session.setActiveToolsByName(["bash", "read"]);
 	const wrappedBash = session.agent.state.tools.find(t => t.name === "bash");
-	await expect(
-		wrappedBash!.execute(
-			"call-intercepted",
-			{ command: "cat file.txt" },
-			undefined,
-			undefined as never,
-			{ toolNames: ["read", "bash"] } as AgentToolContext,
-		),
-	).rejects.toThrow("Use the `read` tool instead of cat/head/tail");
+	// The interceptor no longer refuses: the call is routed to its dedicated tool (or run
+	// by the shell), and neither path asks the client for permission.
+	const result = await wrappedBash!.execute(
+		"call-intercepted",
+		{ command: "cat file.txt" },
+		undefined,
+		undefined as never,
+		{ toolNames: ["read", "bash"] } as AgentToolContext,
+	);
 
+	expect(JSON.stringify(result)).not.toContain("blocked by tool policy");
 	expect(permissionSpy).not.toHaveBeenCalled();
 });
 
