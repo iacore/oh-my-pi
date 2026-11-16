@@ -985,6 +985,7 @@ Each branch was rebased, its review threads answered, and the valid findings fix
 Branches live on `g` (iacore/oh-my-pi); scratch worktrees under `/var/tmp/omp-pr/` (never `/tmp`,
 a 5.8G tmpfs that fills with a dozen `bun install`s).
 
+- #11840 `feat/tool-output-details` `fcf46e5deb` — the detail gesture folds thinking blocks to their "Thought for 12s" head instead of hiding them (`Ctrl+H` writes `expandThinkingBlocks`; show/hide stays on `Ctrl+T`), rebased onto `main` `6f03614d76` with the branch's stale changelog and committed docs conflict block repaired — landing on `custom` as `5fb5693a4b`.
 - #11840 `feat/tool-output-details` `299c7df88f` — `display.hideToolOutputDetails`; `299c7df88f` reopens a folded call when its one-row summary is clicked (the fold no longer outranks the call's own expansion) — landing on `custom` as `fcbb991437`.
 - #16103 `fix/doas-auth-terminal` `ce28e911db` — auth-terminal routing; the same fix rides `custom` as `0303e0f488`.
 - #15460 `autolearn/scribe-upstream` `26ca79e48c` — session-settle scribe.
