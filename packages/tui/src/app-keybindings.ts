@@ -117,7 +117,7 @@ export const KEYBINDINGS = {
 	},
 	"app.display.toggleDetail": {
 		defaultKeys: [],
-		description: "Toggle thinking blocks and tool output details",
+		description: "Expand or fold thinking blocks and tool output details",
 	},
 	"app.thinking.cycle": {
 		defaultKeys: "shift+tab",
