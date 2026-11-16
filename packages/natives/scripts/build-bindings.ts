@@ -10,6 +10,10 @@
  *
  * `OMP_NATIVE_FEATURES` passes extra cargo features to `napi build --features`
  * (e.g. `wayland-pipewire`). Cargo path only; Bazel builds ignore it.
+ *
+ * `OMP_NATIVE_CPU` selects the x64 codegen target (default `native`: tuned for
+ * this build host). `generic` restores the reproducible `x86-64-v3`/`v2` ISA
+ * floor for an addon that will run on another machine.
  */
 
 import * as fsSync from "node:fs";
@@ -71,18 +75,26 @@ const localAddon = resolveLocalHostAddon({
 const effectiveVariant = localAddon.x64Variant;
 const variantSuffix = effectiveVariant ? `-${effectiveVariant}` : "";
 
-// Pin Rust target-cpu so x64 baseline/modern variants get a reproducible ISA floor
-// instead of inheriting the host CPU when RUSTFLAGS is unset. Non-x64 builds keep
-// the target's default CPU features: `-C target-cpu=native` would bake the build
-// host's CPU features into the addon and trips ring 0.17's aarch64-apple
-// const assertion (CAPS_STATIC == MIN_STATIC_FEATURES). Shipping Windows addons
-// also link the MSVC CRT statically so clean systems need no VC++ Redistributable.
+// Pin Rust target-cpu when RUSTFLAGS is unset. This path only ever emits a
+// host addon (release addons build through Bazel with their own -Ctarget-cpu),
+// so x64 defaults to `-C target-cpu=native`: the addon runs on the machine that
+// compiled it, and the ISA floor only ever cost it the build host's tuning
+// model and any extension an x86-64-vN level does not name. The floor stays
+// reachable with `OMP_NATIVE_CPU=generic` (`x86-64-v3`, or v2 on a host without
+// AVX2) for an addon meant to be copied to another machine.
+// Non-x64 builds keep the target's default CPU features: `-C target-cpu=native`
+// trips ring 0.17's aarch64-apple const assertion (CAPS_STATIC ==
+// MIN_STATIC_FEATURES). Shipping Windows addons also link the MSVC CRT
+// statically so clean systems need no VC++ Redistributable.
 if (!Bun.env.RUSTFLAGS) {
 	const rustFlags: string[] = [];
 	if (process.platform === "win32") {
 		rustFlags.push("-C", "target-feature=+crt-static");
 	}
-	if (effectiveVariant === "modern") {
+	const cpuTuning = Bun.env.OMP_NATIVE_CPU?.trim() || "native";
+	if (effectiveVariant !== null && cpuTuning === "native") {
+		rustFlags.push("-C", "target-cpu=native");
+	} else if (effectiveVariant === "modern") {
 		rustFlags.push("-C", "target-cpu=x86-64-v3");
 	} else if (effectiveVariant === "baseline") {
 		rustFlags.push("-C", "target-cpu=x86-64-v2");

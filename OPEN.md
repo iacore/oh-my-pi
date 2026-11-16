@@ -1,5 +1,30 @@
 # Open items — omp-custom
 
+<!-- item: native-addon-host-cpu state=open owner=- blocked=- -->
+
+## The local native addon builds for this host's CPU — landed on `custom` (2026-11-16), not upstreamed
+
+The cargo/napi path pinned `-C target-cpu=x86-64-v3` (v2 without AVX2) so a
+locally built addon kept a reproducible ISA floor. That path only ever emits a
+host addon — release addons build through Bazel with their own `-Ctarget-cpu` —
+so the floor cost the running machine the build host's tuning and any extension
+`x86-64-vN` does not name, and bought nothing.
+
+- **Change**: `packages/natives/scripts/build-bindings.ts` now defaults x64 to
+  `-C target-cpu=native`; `OMP_NATIVE_CPU=generic` restores the v3/v2 floor for
+  an addon meant to be copied elsewhere. Non-x64 is unchanged (aarch64 +
+  `target-cpu=native` trips ring 0.17's `CAPS_STATIC` assertion), and an
+  explicit `RUSTFLAGS` still wins.
+- **Scope on this box**: i5-10300H (Comet Lake, no AVX-512) already sits at
+  x86-64-v3, so native adds only the Skylake scheduling model plus
+  SGX/PKU/WAITPKG — no measurable speedup expected from the Rust addon. The
+  TypeScript bundle is unaffected either way: the compiled binary embeds Bun's
+  runtime and its JSC JITs for the host CPU at run time, so no `-march` reaches
+  it.
+- **Verified**: addon rebuilt from scratch (rustflags change invalidates every
+  crate), loads under Bun, and the grep/search paths that call it pass; see the
+  commit body.
+
 <!-- item: ask-form-pointer-guard state=blocked owner=- blocked=upstream -->
 
 ## An `ask` form's Other field takes typing after a click — landed on `custom` (`ef3ad91910`), PR [#18845](https://github.com/can1357/oh-my-pi/pull/18845) open upstream (2026-11-11)
