@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+<!-- item: fish-shell-tool state=open owner=- blocked=- -->
+
+## The shell tool is `fish` and bash is off by default — landed on `custom` (`860c2b4c71`), not upstreamed (2026-11-17)
+
+`fish` is a second dialect of the same shell tool, not a new tool
+implementation: `BashTool` takes a dialect (`name`, `label`, shell config,
+description template), and `createFishTool` builds it with fish's config, so
+approval, interception, artifacts, async jobs, services and the PTY path are
+shared. `fish` runs because `executeBash` gained `shellOverride`, which wraps
+each command as `fish -c '<command>'` and skips the embedded bash engine.
+
+- **Change**: `tools/fish.ts` resolves `fish` once per process
+  (`Bun.which` + procmgr's spawn env for that binary) and caches it;
+  `exec/bash-executor.ts` prefers `shellOverride` over the resolved shell;
+  `fish.enabled` defaults on and `bash.enabled` defaults off on `custom`, with
+  an explicit `bash` in a session's tool list still honored. Tool-name checks in
+  `session-tools`, the ACP mapper/permission gate, spotlight, memories and the
+  TUI accept either dialect (`isShellToolName`).
+- **Config inheritance**: fish loads `config.fish`, `conf.d/*.fish` and the
+  autoloaded `functions/` for a `-c` call, so our functions, aliases and PATH are
+  in scope; proven by a test that plants a temp HOME's fish config and by a real
+  `bb` function call through the tool.
+- **Prompt**: `prompts/tools/fish.md` teaches fish syntax (`$status`, `set -gx`,
+  `(cmd)`, `test`/`and`/`or`) and says nothing carries over between calls;
+  `shellTool`/`shellToolRef` in the system-prompt data replaced the templates'
+  hardcoded `bash` gates.
+- **Not done**: the `bashInterceptor` still matches bash syntax only, and a bare
+  `cd x` inside a fish call does not move the session cwd (use `cwd`).
+
 <!-- item: native-addon-host-cpu state=open owner=- blocked=- -->
 
 ## The local native addon builds for this host's CPU — landed on `custom` (2026-11-16), not upstreamed
