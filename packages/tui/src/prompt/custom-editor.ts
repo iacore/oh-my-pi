@@ -44,9 +44,8 @@ import { hasMagicKeyword, highlightMagicKeywords, magicKeywordRanges } from "./m
 import type { TspEditorDecoration, TspText } from "@oh-my-pi/pi-wire";
 import { motionEffectsEnabled } from "../motion-effects";
 import { isNativeRendering } from "../native/state";
-import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "./queue-input";
 import { type WordCompletionMethod, WordCompletionProvider } from "./word-completion";
-import { fgOrPlain, theme } from "../theme/theme";
+import { fgOrPlain } from "../theme/theme";
 
 /** A shell-mode draft's sigil (`!`, `!!`, `$`, `$$`) with its surrounding blanks; the mode chip stands in for it natively. */
 const SHELL_SIGIL_RE = /^\s*(?:!!?|\$\$?)[ \t]?/;
@@ -851,12 +850,8 @@ export class CustomEditor extends Editor {
 	#decorationRevision = -1;
 	#decorationText = "";
 	#decorationLines: readonly string[] = [""];
-	#queueShorthandActive = false;
-	#queueListActive = false;
 
-	/** Decorate magic keywords, attachments, and the queue-composer header/list markers.
-	 *  Queue shorthand reserves its first logical line as a dim `Queueing` label; sequential
-	 *  item markers use the accent color so separate follow-ups remain visible while composing.
+	/** Decorate magic keywords and attachments; markers take their token colors.
 	 *  Called once per layout segment, so whole-buffer inputs are computed once per text revision. */
 	override decorateText = (text: string, context: EditorTextDecorationContext): string => {
 		this.#syncComposerTokenPattern();
@@ -866,9 +861,6 @@ export class CustomEditor extends Editor {
 			if (this.#decorationText !== editorText) {
 				this.#decorationText = editorText;
 				this.#decorationLines = this.getLines();
-				const queueBody = parseQueueShorthand(editorText);
-				this.#queueShorthandActive = queueBody !== undefined;
-				this.#queueListActive = queueBody !== undefined && isQueuedMessageList(queueBody);
 			}
 		}
 		// One string instance per revision: whole-buffer memos downstream hit on identity.
@@ -903,18 +895,6 @@ export class CustomEditor extends Editor {
 						},
 						span => highlightMagicKeywords(span, undefined, phase),
 					);
-					if (this.#queueShorthandActive && (value.startsWith("->") || value.startsWith("=>"))) {
-						const icon = typeof theme === "undefined" ? "➤" : theme.nav.selected;
-						return `${fgOrPlain("dim", `Queueing ${icon}`)}${highlighted.slice(2)}`;
-					}
-					if (this.#queueListActive) {
-						const markerMatch = QUEUE_LIST_MARKER_RE.exec(value);
-						if (markerMatch) {
-							const indent = markerMatch[1] ?? "";
-							const markerEnd = markerMatch[0].length;
-							return `${indent}${fgOrPlain("accent", value.slice(indent.length, markerEnd))}${highlighted.slice(markerEnd)}`;
-						}
-					}
 					return highlighted;
 				},
 				renderSkill: (label, name) => {
@@ -958,10 +938,10 @@ export class CustomEditor extends Editor {
 
 	/**
 	 * TSP decorations: magic keywords shimmer (terminal-clocked) in the accent
-	 * color, chips and markers take their token colors, misspellings are marked,
-	 * and queue-composer markers are dimmed/accented, all as ranges over the raw
-	 * buffer instead of painted text. A shell-mode draft is code: only its sigil
-	 * is decorated, hidden behind the mode chip.
+	 * color, chips and markers take their token colors, and misspellings are
+	 * marked, all as ranges over the raw buffer instead of painted text. A
+	 * shell-mode draft is code: only its sigil is decorated, hidden behind the
+	 * mode chip.
 	 */
 	override describeDecorations = (lines: readonly string[]): readonly TspEditorDecoration[] => {
 		const text = lines.join("\n");
@@ -994,22 +974,10 @@ export class CustomEditor extends Editor {
 		const fx = this.#shimmerEnabled() ? "shimmer" : undefined;
 		for (const range of magicKeywordRanges(text)) decor.push({ ...range, s: "accent", fx });
 
-		const queueBody = parseQueueShorthand(text);
-		const queueList = queueBody !== undefined && isQueuedMessageList(queueBody);
 		const typing = this.#typing.word;
 		let lineStart = 0;
 		for (let line = 0; line < lines.length; line++) {
 			const value = lines[line] ?? "";
-			if (queueBody !== undefined && (value.startsWith("->") || value.startsWith("=>"))) {
-				decor.push({ from: lineStart, to: lineStart + 2, s: "dim" });
-			}
-			if (queueList) {
-				const marker = QUEUE_LIST_MARKER_RE.exec(value);
-				if (marker) {
-					const indent = marker[1]?.length ?? 0;
-					decor.push({ from: lineStart + indent, to: lineStart + marker[0].length, s: "accent" });
-				}
-			}
 			const context = { editorText: text, lines, line, startCol: 0, typing };
 			for (const typo of this.#spelling.typoRanges(value, context)) {
 				decor.push({ from: lineStart + typo.start, to: lineStart + typo.start + typo.length, s: "typo" });
@@ -1638,7 +1606,6 @@ export class CustomEditor extends Editor {
 		}
 		// textEquals avoids getText()'s O(buffer) join on every keystroke; kitty
 		// sequences always start with ESC, so plain bytes skip the native parse.
-		const hadBareQueuePrefix = this.textEquals("->") || this.textEquals("=>");
 		const kittyParsed = data.charCodeAt(0) === 0x1b ? parseKittySequence(data) : null;
 		if (kittyParsed && (kittyParsed.modifier & 64) !== 0 && this.onCapsLock) {
 			// Caps Lock is modifier bit 64
@@ -1685,7 +1652,6 @@ export class CustomEditor extends Editor {
 				this.typeCharacter(text);
 				this.#collapseSkillTokens();
 				this.#collapseModelMentions();
-				this.#normalizeQueuePrefix(hadBareQueuePrefix);
 
 				const afterCursor = this.getCursor();
 				const afterLine = this.getLines()[afterCursor.line] ?? "";
@@ -1839,10 +1805,6 @@ export class CustomEditor extends Editor {
 					canonical !== undefined && getKeybindings().matchesCanonical(canonical, "tui.editor.deleteCharForward");
 				if (doublesAsForwardDelete && !this.textEquals("")) {
 					this.deleteCharForward();
-					// Same post-edit normalization the parent dispatch runs below: an edit that
-					// leaves a bare "->"/"=>" turns it into a reserved queue header, or later
-					// typing lands on the Queueing label instead of the queue body.
-					this.#normalizeQueuePrefix(hadBareQueuePrefix);
 					return;
 				}
 				this.onExit?.();
@@ -1885,7 +1847,6 @@ export class CustomEditor extends Editor {
 
 		// Pass to parent for normal handling
 		this.#forwardInput(data);
-		this.#normalizeQueuePrefix(hadBareQueuePrefix);
 	}
 
 	/**
@@ -1937,17 +1898,6 @@ export class CustomEditor extends Editor {
 		// No async paste was started; drain the queued trailing bytes ourselves.
 		this.#drainPendingInput();
 		return true;
-	}
-
-	/** Promote a newly formed bare `->` / `=>` prefix to a reserved header line by opening the
-	 *  queue body beneath it. `hadBareQueuePrefix` is the pre-edit state: a prompt that was
-	 *  already just the prefix is left alone so the user can keep editing it. */
-	#normalizeQueuePrefix(hadBareQueuePrefix: boolean): void {
-		if (hadBareQueuePrefix || !(this.textEquals("->") || this.textEquals("=>"))) return;
-		const cursor = this.getCursor();
-		if (cursor.line === 0 && cursor.col === 2) {
-			this.insertText("\n");
-		}
 	}
 
 	/**

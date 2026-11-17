@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the `->` / `=>` queue shorthand: a prompt starting with either prefix is now sent to the model verbatim, and `/queue <message>` is the only way to queue a follow-up. Prompts handed back to the composer after a drop or a cancel put their unsent follow-ups on separate paragraphs instead of into a `=>` list.
+
 ### Fixed
 
 - Prompt history in a damaged store repairs itself at startup instead of warning "prompt history could not be saved" on every prompt: a damaged full-text index is rebuilt from the stored prompts, and a damaged page quarantines the store and salvages every prompt it can still read.

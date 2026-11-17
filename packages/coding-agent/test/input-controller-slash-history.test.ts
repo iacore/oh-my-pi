@@ -4,7 +4,7 @@ import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
 import { cfgBareExitOnEmptySession, cfgBareSlashCommands } from "@oh-my-pi/pi-coding-agent/modes/settings";
-import { isQueuedMessageList, splitQueuedMessages } from "@oh-my-pi/pi-tui/prompt/queue-input";
+import { splitQueuedMessages } from "@oh-my-pi/pi-tui/prompt/queue-input";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
 
 // Drives the real editor submit handler through the builtin slash dispatch
@@ -168,12 +168,11 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(editor.pendingImageLinks).toEqual([]);
 	});
 
-	// #13925: queue shorthand must not write to a guest's local session/history.
+	// #13925: /queue must not write to a guest's local session/history.
 	it.each([
-		{ input: "-> /new", readOnly: false, compacting: false },
-		{ input: "=>\n1. /new\n2. inspect the result", readOnly: true, compacting: false },
-		{ input: "-> inspect the result", readOnly: false, compacting: true },
-	])("refuses guest queue shorthand ($input, readOnly=$readOnly)", async ({ input, readOnly, compacting }) => {
+		{ input: "/queue /new", readOnly: false, compacting: false },
+		{ input: "/queue inspect the result", readOnly: true, compacting: true },
+	])("refuses a guest /queue ($input, readOnly=$readOnly)", async ({ input, readOnly, compacting }) => {
 		const { ctx, editor, addToHistory, followUp, prompt, onInputCallback, showStatus } = makeCtx(true);
 		const sendPrompt = vi.fn();
 		Object.assign(ctx, { collabGuest: { readOnly, sendPrompt } });
@@ -185,8 +184,10 @@ describe("input controller — slash command history (#3148)", () => {
 		await editor.onSubmit?.(input);
 
 		expect(showStatus).toHaveBeenCalledWith("/queue is host-only during a collab session");
-		expect(editor.getText()).toBe(input);
-		expect(addToHistory).not.toHaveBeenCalled();
+		// A host-only refusal consumes the submitted draft, like the other guest host-only
+		// commands; the dispatcher records the command line in history, so ↑ can recall it.
+		expect(editor.getText()).toBe("");
+		expect(addToHistory).toHaveBeenCalledWith(input);
 		expect(followUp).not.toHaveBeenCalled();
 		expect(prompt).not.toHaveBeenCalled();
 		expect(onInputCallback).not.toHaveBeenCalled();
@@ -206,10 +207,10 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(showStatus).toHaveBeenCalledWith("Queued message for when the agent yields");
 	});
 
-	it("queues an enumerated shorthand prompt as separate ordered follow-ups", async () => {
+	it("queues an enumerated /queue body as separate ordered follow-ups", async () => {
 		const { ctx, editor, addToHistory, followUp, showStatus } = makeCtx(true);
 		controllerFor(ctx);
-		const input = "=>\n1. inspect types\n2. run focused tests\n3. summarize failures";
+		const input = "/queue 1. inspect types\n2. run focused tests\n3. summarize failures";
 		editor.setText(input);
 
 		await editor.onSubmit?.(input);
@@ -509,7 +510,6 @@ describe("yield queue list parsing", () => {
 			"second",
 		]);
 		expect(splitQueuedMessages("1. first\n3. third")).toEqual(["1. first\n3. third"]);
-		expect(isQueuedMessageList("1. first\n2. second\n3. third\n4.")).toBe(true);
 		expect(splitQueuedMessages("1. first\n2. second\n3. third\n4.")).toEqual(["first", "second", "third"]);
 	});
 });

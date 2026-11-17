@@ -43,7 +43,7 @@ import { setCachedImageDimensions } from "@oh-my-pi/pi-tui/prompt/image-referenc
 import { createPromptActionAutocompleteProvider } from "@oh-my-pi/pi-tui/prompt/prompt-action-autocomplete";
 import { createModelMentionSource } from "@oh-my-pi/pi-tui/prompt/model-mention-autocomplete";
 import { createModelBrowserSource } from "../model-browser-source";
-import { formatQueueShorthand, parseQueueShorthand, splitQueuedMessages } from "@oh-my-pi/pi-tui/prompt/queue-input";
+import { splitQueuedMessages } from "@oh-my-pi/pi-tui/prompt/queue-input";
 import { invokeSkillCommandFromText, isKnownSkillCommand } from "../../modes/skill-command";
 import { parseFileSlashInvocation, renderFileSlashCommand } from "../../extensibility/slash-commands";
 import type { InteractiveModeContext, SubmittedUserInput } from "../../modes/types";
@@ -1269,16 +1269,6 @@ export class InputController {
 
 			if (!text && !hasInputImages) return;
 
-			const queueBody = parseQueueShorthand(text);
-			if (queueBody !== undefined) {
-				await this.#queueForYield(queueBody, {
-					historyText: text,
-					images: inputImages,
-					imageLinks: inputImageLinks,
-				});
-				return;
-			}
-
 			const bareSlashCommand = this.#resolveBareSlashCommand(text, submittedText, hasInputImages, armedBareCommand);
 			if (bareSlashCommand?.confirm) {
 				this.#armedBareCommand = { text, sessionId: this.ctx.sessionManager.getSessionId() };
@@ -2067,8 +2057,8 @@ export class InputController {
 			detachedText?: string;
 		},
 	): Promise<void> {
-		// Queue shorthand reaches this helper before the normal guest input gate.
-		// Like /queue, it must not submit to the guest's local session.
+		// /queue reaches this helper before the normal guest input gate.
+		// Like any queue, it must not submit to the guest's local session.
 		if (this.ctx.collabGuest) {
 			this.ctx.showStatus("/queue is host-only during a collab session");
 			this.ctx.editor.setText(options.detachedText ?? options.historyText ?? text);
@@ -2078,7 +2068,7 @@ export class InputController {
 		const splitMessages = splitQueuedMessages(text);
 		if (splitMessages.length === 0 && !options.images?.length) {
 			if (options.detachedText === undefined) this.ctx.editor.clearDraft();
-			this.ctx.showWarning("Usage: /queue <message> (or start a prompt with -> / =>)");
+			this.ctx.showWarning("Usage: /queue <message>");
 			return;
 		}
 
@@ -2169,7 +2159,9 @@ export class InputController {
 					}
 				}
 			} else {
-				const restored = formatQueueShorthand(messages.slice(queuedCount));
+				// Unqueued tail: no shorthand can carry it any more, so hand it back as one
+				// editable draft with the item boundaries kept visible.
+				const restored = messages.slice(queuedCount).join("\n\n");
 				if (options.detachedText !== undefined) restoreDetachedDraft(this.ctx.editor, restored);
 				else this.ctx.editor.setText(restored);
 			}

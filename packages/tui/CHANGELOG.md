@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The composer no longer reads a leading `->` / `=>` as queue shorthand: such a prompt is submitted as typed, with no `Queueing` header line and no list-marker highlighting.
+
 ### Fixed
 
 - Fixed an `ask` HTML form in Tern not taking typing after a click on its Other row or a text well while a composer draft held the keyboard: the click now hands the keys to the form, as ↑/↓ does, instead of every key still editing the draft

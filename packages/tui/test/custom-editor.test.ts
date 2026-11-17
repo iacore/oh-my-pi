@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { CURSOR_MARKER, getKeybindings, setKeybindings } from "@oh-my-pi/pi-tui";
+import { getKeybindings, setKeybindings } from "@oh-my-pi/pi-tui";
 import { setKittyProtocolActive } from "@oh-my-pi/pi-tui/keys";
 import { $ } from "bun";
 import { KeybindingsManager, getDefaultPasteImageKeys } from "@oh-my-pi/pi-tui/app-keybindings";
@@ -134,73 +134,6 @@ describe("CustomEditor restored image drafts", () => {
 			text: "Inspect [Image #1, 1x1]",
 			images: [image],
 		});
-	});
-});
-
-describe("CustomEditor queue shorthand decoration", () => {
-	beforeAll(async () => {
-		await initTheme();
-	});
-
-	it("reserves the first line as soon as either queue prefix is completed", () => {
-		for (const prefix of ["->", "=>"]) {
-			const editor = new CustomEditor(getEditorTheme());
-			editor.handleInput(prefix[0] ?? "");
-			expect(editor.getText()).toBe(prefix[0]);
-
-			editor.handleInput(prefix[1] ?? "");
-			expect(editor.getText()).toBe(`${prefix}\n`);
-			expect(editor.getCursor()).toEqual({ line: 1, col: 0 });
-
-			editor.handleInput("\x7f");
-			expect(editor.getText()).toBe(`${prefix}\n`);
-			expect(editor.getCursor()).toEqual({ line: 1, col: 0 });
-		}
-	});
-
-	it("renders the reserved line as a dim Queueing header", () => {
-		for (const prefix of ["->", "=>"]) {
-			const editor = new CustomEditor(getEditorTheme());
-			editor.setText(`${prefix}\nqueue this`);
-
-			expect(editor.decorateText(prefix, { line: 0, startCol: 0, endCol: prefix.length })).toBe(
-				theme.fg("dim", `Queueing ${theme.nav.selected}`),
-			);
-			editor.focused = true;
-			const rendered = editor.render(40).map(line => Bun.stripANSI(line.replace(CURSOR_MARKER, "")));
-			expect(rendered.some(line => line.includes(`Queueing ${theme.nav.selected}`))).toBe(true);
-			expect(rendered.every(line => Bun.stringWidth(line) === 40)).toBe(true);
-			expect(rendered.some(line => line.includes("queue this"))).toBe(true);
-		}
-	});
-
-	it("highlights dot and parenthesis markers only for detected queue lists", () => {
-		for (const [input, marker] of [
-			["=>\n1. first\n2. second", "1."],
-			["=>\n1) first\n2) second", "1)"],
-		]) {
-			const editor = new CustomEditor(getEditorTheme());
-			editor.setText(input);
-			const text = `${marker} first`;
-			expect(
-				editor
-					.decorateText(text, { line: 1, startCol: 0, endCol: text.length })
-					.startsWith(theme.fg("accent", marker)),
-			).toBe(true);
-		}
-
-		const unfinished = new CustomEditor(getEditorTheme());
-		unfinished.setText("=>\n1. first\n2. second\n3. third\n4.");
-		expect(
-			unfinished.decorateText("1. first", { line: 1, startCol: 0, endCol: 8 }).startsWith(theme.fg("accent", "1.")),
-		).toBe(true);
-		expect(
-			unfinished.decorateText("4.", { line: 4, startCol: 0, endCol: 2 }).startsWith(theme.fg("accent", "4.")),
-		).toBe(true);
-
-		const editor = new CustomEditor(getEditorTheme());
-		editor.setText("=>\n1. first\n3. third");
-		expect(editor.decorateText("1. first", { line: 1, startCol: 0, endCol: 8 })).toBe("1. first");
 	});
 });
 

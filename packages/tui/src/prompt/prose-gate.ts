@@ -34,8 +34,7 @@ function tokenAt(text: string, start: number, end: number): string {
 
 /**
  * Whether `text[start, end)` is a prose word: unmasked by {@link maskNonProse},
- * not inside a path/identifier-like token, and not on a slash-command or
- * queue-shorthand line.
+ * not inside a path/identifier-like token, and not on a slash-command line.
  */
 export function isProseWord(text: string, masked: string, start: number, end: number): boolean {
 	if (start < 0 || end <= start || end > text.length) return false;
@@ -45,7 +44,7 @@ export function isProseWord(text: string, masked: string, start: number, end: nu
 		if (CODEISH_CHARACTERS.includes(char)) return false;
 	}
 	if (CAMEL_CASE.test(token) || /\d/.test(token)) return false;
-	return !text.trimStart().startsWith("/") && !text.startsWith("->") && !text.startsWith("=>");
+	return !text.trimStart().startsWith("/");
 }
 
 /** Whole-buffer context for `line`, starting at column 0. */

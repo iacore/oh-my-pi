@@ -20,11 +20,11 @@ import type { DroppedPrompt } from "@oh-my-pi/pi-coding-agent/session/agent-sess
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { convertToLlm, USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { parseQueueShorthand } from "@oh-my-pi/pi-tui/prompt/queue-input";
+
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 
-const QUEUE_LIST = "=>\n1. ITEM ONE\n2. ITEM TWO\n3. ITEM THREE";
+const QUEUE_LIST = "1. ITEM ONE\n2. ITEM TWO\n3. ITEM THREE";
 
 function requestedPrompts(mock: MockModel): string[] {
 	return mock.calls.map(call => {
@@ -35,7 +35,7 @@ function requestedPrompts(mock: MockModel): string[] {
 	});
 }
 
-describe("queue shorthand on an idle session with a transcript (#10802)", () => {
+describe("queued list on an idle session with a transcript (#10802)", () => {
 	let session: AgentSession | undefined;
 	let authStorage: AuthStorage | undefined;
 	const cleanupDirs: string[] = [];
@@ -153,9 +153,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 		const controller = new InputController(ctx);
 		const submitList = async (list = QUEUE_LIST, duringDispatch?: () => Promise<void>) => {
 			editor.setText(list);
-			const body = parseQueueShorthand(list);
-			if (body === undefined) throw new Error("Expected queue shorthand");
-			await controller.handleQueueCommand(body);
+			await controller.handleQueueCommand(list);
 			if (!pending) throw new Error("Expected the first item to be handed to the run loop");
 			const dispatched = submitInteractiveInput(mode, live, pending);
 			await duringDispatch?.();
@@ -202,7 +200,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 		const skill = await writeSkill("recap");
 		const { mock, submitList } = await setup(new Map([["skill:recap", skill]]));
 
-		await submitList("=>\n1. /skill:recap now\n2. ITEM TWO\n3. ITEM THREE");
+		await submitList("1. /skill:recap now\n2. ITEM TWO\n3. ITEM THREE");
 
 		const prompts = requestedPrompts(mock);
 		expect(prompts[0]).toContain("Summarize recent changes.");
@@ -226,7 +224,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 		const { session, mock, dropped, submitList } = await setup(new Map([["skill:gone", skill]]));
 		await fs.rm(skill.filePath);
 
-		await submitList("=>\n1. /skill:gone now\n2. ITEM TWO\n3. ITEM THREE");
+		await submitList("1. /skill:gone now\n2. ITEM TWO\n3. ITEM THREE");
 
 		expect(requestedPrompts(mock)).toEqual([]);
 		expect(session.getQueuedMessages().followUp).toEqual([]);
@@ -296,7 +294,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 			});
 		});
 
-		await submitList("=>\n1. /note hi\n2. ITEM TWO\n3. ITEM THREE");
+		await submitList("1. /note hi\n2. ITEM TWO\n3. ITEM THREE");
 
 		expect(queuedDuringCommand).toEqual([]);
 		expect(requestedPrompts(mock)).toEqual(["ITEM TWO", "ITEM THREE"]);
@@ -311,7 +309,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 			});
 		});
 
-		await submitList("=>\n1. /note hi\n2. ITEM TWO\n3. ITEM THREE");
+		await submitList("1. /note hi\n2. ITEM TWO\n3. ITEM THREE");
 
 		expect(requestedPrompts(mock)).toEqual([]);
 		expect(dropped).toEqual([{ text: "/note hi", followUps: ["ITEM TWO", "ITEM THREE"] }]);
@@ -322,7 +320,7 @@ describe("queue shorthand on an idle session with a transcript (#10802)", () => 
 			pi.registerCommand("note", { handler: async () => {} });
 		});
 
-		await submitList("=>\n1. ITEM ONE\n2. /note hi\n3. ITEM THREE");
+		await submitList("1. ITEM ONE\n2. /note hi\n3. ITEM THREE");
 
 		expect(requestedPrompts(mock)).toEqual([]);
 		expect(dropped).toEqual([{ text: "ITEM ONE", followUps: ["/note hi", "ITEM THREE"] }]);

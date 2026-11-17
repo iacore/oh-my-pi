@@ -124,6 +124,8 @@ async function createContext() {
 		abort,
 		retry,
 		prewarmModelConnection: vi.fn(),
+		customCommands: [],
+		promptTemplates: [],
 	};
 	const updatePendingMessagesDisplay = vi.fn();
 	const handleBtwBranchKey = vi.fn(async () => true);
@@ -172,6 +174,8 @@ async function createContext() {
 	focused = editor;
 	const ctx = {
 		editor: editor as unknown as InteractiveModeContext["editor"],
+		skillCommands: new Map(),
+		fileSlashCommands: new Map(),
 		syncIdleMaintenanceView: vi.fn(),
 		resetDisplayAfterAppearanceRefresh,
 		ui: {
@@ -894,7 +898,7 @@ describe("InputController keybinding setup", () => {
 		});
 	});
 
-	it("holds an Enter queue shorthand behind a follow-up /compact whose input hook is slower", async () => {
+	it("holds an Enter /queue behind a follow-up /compact whose input hook is slower", async () => {
 		const { InputController, ctx, editor } = await createContext();
 		withCompactionQueue(ctx);
 		const compactHook = Promise.withResolvers<void>();
@@ -904,6 +908,7 @@ describe("InputController keybinding setup", () => {
 			followUp,
 			extensionRunner: {
 				hasHandlers: (event: string) => event === "input",
+				getCommand: () => undefined,
 				emitInput: async (text: string) => {
 					if (text.startsWith("/compact")) await compactHook.promise;
 					return undefined;
@@ -911,11 +916,12 @@ describe("InputController keybinding setup", () => {
 			},
 		});
 		const controller = new InputController(ctx);
+		Object.assign(ctx, { handleQueueCommand: (message: string) => controller.handleQueueCommand(message) });
 		controller.setupEditorSubmitHandler();
 
 		editor.setText("/compact");
 		const compact = controller.handleFollowUp();
-		const queued = editor.onSubmit?.("=> later");
+		const queued = editor.onSubmit?.("/queue later");
 		compactHook.resolve();
 		await Promise.all([compact, queued]);
 

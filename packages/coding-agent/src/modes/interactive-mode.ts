@@ -160,7 +160,6 @@ import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { resolveMarkdownLinkHrefs } from "../internal-urls/hyperlink-targets";
 import type { ResolveContext } from "../internal-urls/index";
 import { modelMentionChipLabel, shiftImageMarkers } from "@oh-my-pi/pi-tui/prompt/composer-attachments";
-import { formatQueueShorthand } from "@oh-my-pi/pi-tui/prompt/queue-input";
 import { isTranscriptEntry, type SessionContext } from "../session/session-context";
 import type { SessionManager } from "../session/session-manager";
 import { loadPinnedSessionIds } from "../session/session-pins";
@@ -4125,7 +4124,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			const submittedImages = submission.images ?? [];
 			const laterImages = this.editor.pendingImages;
 			const submittedText = submission.followUps
-				? formatQueueShorthand([submission.text, ...submission.followUps])
+				? [submission.text, ...submission.followUps].join("\n\n")
 				: submission.text;
 			const recoveredText = laterText
 				? `${submittedText}\n${shiftImageMarkers(laterText, submittedImages.length)}`
@@ -4151,7 +4150,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * to an answer. Neither is on the branch any more, so the tree/branch
 	 * selectors cannot offer it — remove the optimistic transcript row and put
 	 * the typed text back in the editor for editing. A prompt with unsent
-	 * follow-ups comes back as one `=>` list.
+	 * follow-ups comes back as one draft with each message on its own paragraph.
 	 */
 	restoreDroppedPrompt(prompt: DroppedPrompt): void {
 		this.clearOptimisticUserMessage();
@@ -4180,7 +4179,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.editor.pendingImages = prompt.images ? [...prompt.images] : [];
 			this.editor.pendingImageLinks = prompt.images ? prompt.images.map(() => undefined) : [];
 			this.editor.imageLinks = this.editor.pendingImageLinks;
-			this.editor.setText(prompt.followUps ? formatQueueShorthand([prompt.text, ...prompt.followUps]) : prompt.text);
+			this.editor.setText(prompt.followUps ? [prompt.text, ...prompt.followUps].join("\n\n") : prompt.text);
 		}
 		this.ui.requestRender();
 	}

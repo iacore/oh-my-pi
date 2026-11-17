@@ -1,5 +1,4 @@
-const QUEUE_PREFIXES: readonly string[] = ["->", "=>"];
-/** Prefix matcher shared by queue-list parsing and editor highlighting. */
+/** Matcher for one item marker of a sequential queue list (`1.`, `2)`, `iv.`, `b)`). */
 export const QUEUE_LIST_MARKER_RE = /^([\t ]*)(\d+|[A-Za-z]+)([.)])(?=[\t ]|$)/;
 const CANONICAL_ROMAN_RE = /^(?=[MDCLXVI])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/i;
 
@@ -15,18 +14,6 @@ interface EnumeratedList {
 	source: string;
 	lines: string[];
 	items: EnumeratedItem[];
-}
-
-/** Extract the message body from the `->` / `=>` yield-queue shorthand. */
-export function parseQueueShorthand(text: string): string | undefined {
-	const prefix = QUEUE_PREFIXES.find(candidate => text.startsWith(candidate));
-	return prefix ? text.slice(prefix.length).trim() : undefined;
-}
-
-/** Render messages as `->` / `=>` shorthand that {@link parseQueueShorthand} and {@link splitQueuedMessages} read back as the same messages. */
-export function formatQueueShorthand(messages: readonly string[]): string {
-	if (messages.length === 1) return `=> ${messages[0]}`;
-	return `=>\n${messages.map((message, index) => `${index + 1}. ${message.replaceAll("\n", "\n   ")}`).join("\n")}`;
 }
 
 function parseEnumeratedItem(line: string, lineIndex: number): EnumeratedItem | undefined {
@@ -57,8 +44,7 @@ function decodeRoman(marker: string): number | undefined {
 	const upper = marker.toUpperCase();
 	let value = 0;
 	for (let index = 0; index < upper.length; index++) {
-		const current = values[upper[index] ?? ""];
-		if (current === undefined) return undefined;
+		const current = values[upper[index] ?? ""] ?? 0;
 		const next = values[upper[index + 1] ?? ""] ?? 0;
 		value += current < next ? -current : current;
 	}
@@ -114,11 +100,6 @@ function parseEnumeratedList(text: string): EnumeratedList | undefined {
 		return undefined;
 	}
 	return { source, lines, items };
-}
-
-/** Whether text currently forms a sequential queue list, including an unfinished trailing item. */
-export function isQueuedMessageList(text: string): boolean {
-	return parseEnumeratedList(text) !== undefined;
 }
 
 /** Split a sequential numeric, Roman-numeral, or alphabetic list into queue entries. */
