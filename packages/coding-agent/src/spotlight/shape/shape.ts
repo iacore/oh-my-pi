@@ -211,7 +211,7 @@ async function base(run: Run, subject: Subject): Promise<Base> {
 	let text = input.text;
 	const steps: string[] = [];
 	let recovery = false;
-	if (input.tool === "bash") {
+	if (input.tool === "bash" || input.tool === "fish") {
 		const code = await outlineBash(run, text);
 		recovery = code.recovery;
 		if (code.text !== undefined) {
@@ -475,11 +475,12 @@ async function shapeSubject(run: Run, subject: Subject): Promise<{ view: View; s
 		if (!witnessed[i]) shown += width[i] + 1;
 	});
 	const folded = b.steps.some(s => s === "outline" || s === "docs" || s === "tests");
-	const scale = input.tool === "bash" && isTestRun(command) ? 2 : 1;
-	const program = input.tool === "eval" || (input.tool === "bash" && runsProgram(command));
+	const scale = (input.tool === "bash" || input.tool === "fish") && isTestRun(command) ? 2 : 1;
+	const shellCommand = input.tool === "bash" || input.tool === "fish";
+	const program = input.tool === "eval" || (shellCommand && runsProgram(command));
 	const sourceRead = input.read
 		? SOURCE_PATH.test(input.read.path)
-		: input.tool === "bash" && printsFiles(command) && namesSource(command) && !program;
+		: shellCommand && printsFiles(command) && namesSource(command) && !program;
 	// A sub-agent's report is read in full: cut, it came back as a read of the cut's copy (8 of 9), costing more than
 	// the cut saved. An edit's result came back 5 of 13 times for ~600 tokens saved: even, so it stays whole too.
 	const report =
@@ -488,7 +489,7 @@ async function shapeSubject(run: Run, subject: Subject): Promise<{ view: View; s
 		input.tool === "edit" ||
 		input.tool === "write" ||
 		input.tool === "ast_edit" ||
-		(input.tool === "bash" && runsAgent(command));
+		(shellCommand && runsAgent(command));
 	// A diff is reviewed whole: each cut one a review needed its hidden lines (4 of 4). Searches and filtered commands
 	// get no such pass: cut, 2% of `grep` results and 11% of filtered commands were read back, costing a fraction of
 	// what showing them whole up to 12k added.

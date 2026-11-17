@@ -67,7 +67,10 @@ export const JEVIFY_NOTICE: string = jevifyNotice.trim();
 
 /** Hidden notice for "orchestrate", naming only the tools the session actually exposes. */
 export function renderOrchestrateNotice({ tools }: Pick<MagicKeywordContext, "tools">): string {
-	return prompt.render(orchestrateNotice, { tools }).trim();
+	// The shell tool is whichever dialect the session exposes: `fish` once bash
+	// is disabled, `bash` when a caller asked for it by name.
+	const shellTool = tools.includes("fish") ? "fish" : tools.includes("bash") ? "bash" : "";
+	return prompt.render(orchestrateNotice, { tools, shellTool, shellToolRef: shellTool }).trim();
 }
 
 /** Hidden notice for "workflowz", shaped by the active task/eval capabilities. */

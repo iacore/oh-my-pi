@@ -102,15 +102,28 @@ export const cfgShellPath = register({ id: "shellPath", type: "string", default:
 /** Pi shell command prefix forwarded to legacy extensions; OMP's native shell does not apply it. */
 export const cfgLegacyShellCommandPrefix = register({ id: "shellCommandPrefix", type: "string", default: undefined });
 
+/** Custom: the `fish` tool replaces bash here, so bash is off unless a call asks for it by name. */
 export const cfgBashEnabled = register({
 	id: "bash.enabled",
 	type: "boolean",
-	default: true,
+	default: false,
 	ui: {
 		tab: "shell",
 		group: "Bash",
 		label: "Bash",
 		description: "Enable the bash tool for shell command execution",
+	},
+});
+
+export const cfgFishEnabled = register({
+	id: "fish.enabled",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "shell",
+		group: "Fish",
+		label: "Fish",
+		description: "Enable the fish tool: the shell tool running every command through fish",
 	},
 });
 

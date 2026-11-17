@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { ToolCall } from "@oh-my-pi/pi-ai";
 import type { Token, Tokens } from "@oh-my-pi/pi-utils/marked";
+import { isShellToolName } from "../tools/names";
 import { extractMarkdownLinks, lexDocument } from "../index";
 
 /** A fenced code block extracted from assistant markdown. */
@@ -154,7 +155,7 @@ function extractEvalCode(args: unknown): { code: string; language: string } | un
 
 /** Runnable command carried by a `bash`/`eval` tool call, if any. */
 export function commandFromToolCall(tc: ToolCall): LastCommand | undefined {
-	if (tc.name === "bash" && typeof tc.arguments.command === "string") {
+	if (isShellToolName(tc.name) && typeof tc.arguments.command === "string") {
 		return { kind: "bash", code: tc.arguments.command, language: "bash" };
 	}
 	if (tc.name === "eval") {

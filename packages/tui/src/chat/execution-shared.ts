@@ -7,6 +7,7 @@
  * stay in their respective files.
  */
 
+import { isShellToolName } from "../tools/names";
 import { Loader } from "../components/loader";
 import { Text } from "../components/text";
 import { Container, type TUI } from "../tui";
@@ -245,7 +246,7 @@ const EXECUTION_RUN_STATE: Record<ExecutionStatus, RunState> = {
  */
 export function describeExecutionTool(input: ExecutionToolInput): NativeNode {
 	const running = input.status === "running";
-	const shell = input.name === "bash";
+	const shell = isShellToolName(input.name);
 	const ms = Math.max(0, Math.round((input.endedAt ?? performance.now()) - input.startedAt));
 	const state = EXECUTION_RUN_STATE[input.status];
 	const box = runBox(

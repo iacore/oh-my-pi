@@ -31,6 +31,8 @@ export async function runInteractiveBashPty(
 		artifactId?: string;
 		/** A password prompt rather than a console: a small card, not the full pane. */
 		compact?: boolean;
+		/** Shell binary that runs the command; the settings shell by default. */
+		shell?: string;
 	},
 ): Promise<BashInteractiveResult> {
 	const settings = await Settings.init();
@@ -121,7 +123,7 @@ export async function runInteractiveBashPty(
 							signal: options.signal,
 							cols,
 							rows,
-							shell: resolvedShell,
+							shell: options.shell ?? resolvedShell,
 						},
 						(err, chunk) => {
 							if (finished || err || !chunk) return;

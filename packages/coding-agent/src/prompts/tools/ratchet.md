@@ -101,7 +101,7 @@ Existing eval → reuse its cases, grader, and runner; add only a thin adapter t
    If it exceeds the smallest gain the user would act on, raise reps or cases before approving.
 3. `r.approve("plan", question=…, preview=<will change / won't touch table, goal, cases × reps × model, measured pilot wall-clock scaled to the full set, stop rule>)`.
    This is the last stop.
-4. `r.check("baseline")` → run its `command` with `bash` async → on completion `r.gate("baseline")`. Heed warnings:
+4. `r.check("baseline")` → run its `command` with the shell tool (`fish`) async → on completion `r.gate("baseline")`. Heed warnings:
    - near-ceiling baseline → switch the goal to cost/latency
    - train/test mismatch → report it
    - infra errors → fix the runner first.
@@ -120,7 +120,7 @@ Each round `vN`:
    Early rounds may try a different lever (tool description, effort) instead of rewording.
 2. **Apply** — de-fluff first (drop platitudes, restated defaults, "be careful"). Edit only `change` paths;
    write `vN/change.md` (first line = one-line summary, then why) and `vN/change.patch`. Config levers: probe one case before the full pass.
-3. **Run** — `r.check("vN")`, then its command with `bash` async. Stay idle or answer the user; results auto-deliver.
+3. **Run** — `r.check("vN")`, then its command with the shell tool (`fish`) async. Stay idle or answer the user; results auto-deliver.
 4. **Gate** — `r.gate("vN", change=<one line>)` and obey it:
    - `keep` → build on it
    - `revert` → `git apply -R vN/change.patch`

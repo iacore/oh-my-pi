@@ -4653,7 +4653,7 @@ async function runSubprocessOnThisThread(options: ExecutorOptions): Promise<Sing
 		toolNames &&
 		!options.restrictToolNames &&
 		!toolNames.includes("wait") &&
-		(toolNames.includes("task") || toolNames.includes("bash"))
+		(toolNames.includes("task") || toolNames.includes("bash") || toolNames.includes("fish"))
 	) {
 		toolNames = [...toolNames, "wait"];
 	}

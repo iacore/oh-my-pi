@@ -60,6 +60,12 @@ export interface BashExecutorOptions {
 	env?: Record<string, string>;
 	/** Run through the configured user shell instead of the embedded shell parsing directly. */
 	useUserShell?: boolean;
+	/**
+	 * Run the command in this shell instead of the settings-resolved one: the
+	 * `fish` tool passes a fish config, so its command lines are parsed by fish
+	 * (`fish -c <command>`) and never by the embedded bash engine.
+	 */
+	shellOverride?: ShellConfig;
 	/** Run supported user shells (zsh/fish) on a headless PTY; requires `useUserShell`. */
 	pty?: BashPtyOptions;
 	/**
@@ -668,18 +674,16 @@ async function executeUserShellPty(run: {
 export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
 	const settings = await Settings.init();
 	const baseShellConfig = settings.getShellConfig();
+	const overrideShell = options?.shellOverride;
 	const shellConfig =
-		options?.useUserShell === true ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig;
+		overrideShell ??
+		(options?.useUserShell === true ? resolveUserShellConfig(settings, baseShellConfig) : baseShellConfig);
 	const { shell, args, env: shellEnv, prefix } = shellConfig;
 	const bashShell = isBashShell(shell);
-	// `!` hotkey commands on zsh/fish run in a real PTY: interactive shell
-	// startup (zle, job control, gitstatus) needs a TTY, and tools only emit
-	// color when stdout is one. bash keeps the snapshot + embedded-shell path;
-	// `cd` keeps the persistent shell so the session cwd can follow it.
 	const ptyRequest = options?.pty;
 	const usePty =
 		ptyRequest !== undefined &&
-		options?.useUserShell === true &&
+		(overrideShell !== undefined || options?.useUserShell === true) &&
 		!bashShell &&
 		supportsAutoUserShell(shell) &&
 		$env.PI_NO_PTY !== "1" &&
@@ -713,8 +717,9 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const runCdInPersistentShell = options?.useUserShell === true && !prefix && isPersistentShellCdCommand(command);
 	// Never wrap in cmd.exe: it is only the Windows no-bash fallback for spawn
 	// paths, and the embedded shell runs the POSIX line better directly.
-	const finalCommand =
-		options?.useUserShell === true && !bashShell && !isCmdShell(shell) && !runCdInPersistentShell
+	const finalCommand = overrideShell
+		? quotePosixArgv([shell, ...args, preflight.command])
+		: options?.useUserShell === true && !bashShell && !isCmdShell(shell) && !runCdInPersistentShell
 			? buildUserShellCommand(shell, args, preflight.command)
 			: preflight.command;
 

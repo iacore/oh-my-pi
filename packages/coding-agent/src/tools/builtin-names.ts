@@ -3,6 +3,7 @@ import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 export const BUILTIN_TOOL_NAMES = [
 	"read",
 	"bash",
+	"fish",
 	"cd",
 	"edit",
 	"ast_grep",
@@ -70,6 +71,15 @@ export function normalizeToolNames(names: Iterable<string>): string[] {
 export function toolWireName(registry: ReadonlyMap<string, AgentTool>, name: string): string {
 	const tool = registry.get(name);
 	return typeof tool?.customWireName === "string" ? tool.customWireName : name;
+}
+
+/**
+ * Whether `name` is the shell tool in any of its dialects: `bash` (the embedded
+ * bash engine) or `fish` (every command parsed by fish). Callers that key
+ * behavior to "the shell tool" MUST use this, never a bare `=== "bash"`.
+ */
+export function isShellToolName(name: string): boolean {
+	return name === "bash" || name === "fish";
 }
 
 /** MCP tool names carry the `mcp__<server>_<tool>` prefix minted by `createMCPToolName`. */

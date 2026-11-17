@@ -38,7 +38,7 @@ import sessionAgentNoticePrompt from "../prompts/system/session-agent-notice.md"
 import skillNoticePrompt from "../prompts/system/skill-notice.md" with { type: "text" };
 import toolRosterNoticePrompt from "../prompts/system/tool-roster-notice.md" with { type: "text" };
 import xdevMountNoticePrompt from "../prompts/system/xdev-mount-notice.md" with { type: "text" };
-import { isMCPToolName, normalizeToolNames } from "../tools/builtin-names";
+import { isMCPToolName, isShellToolName, normalizeToolNames } from "../tools/builtin-names";
 import {
 	approvalRestrictions,
 	denyError,
@@ -1222,7 +1222,7 @@ export class SessionTools {
 		if (PERMISSION_REQUIRED_TOOLS[tool.name] !== true) return tool;
 		// Default-config ACP sessions still ask for executable calls even though
 		// the schema defaults to yolo; explicit yolo is an intentional opt-in.
-		if (tool.name !== "bash" && this.#isExplicitAutoApproveMode()) {
+		if (!isShellToolName(tool.name) && this.#isExplicitAutoApproveMode()) {
 			const userPolicies: Record<string, unknown> = cfgToolsApproval.get(this.#host.settings);
 			const toolPolicy = userPolicies[tool.name];
 			if (!toolPolicy || toolPolicy === "allow") return tool;
@@ -1240,7 +1240,7 @@ export class SessionTools {
 					const restrictions = approvalRestrictions(this.#host.settings, this.#host.sessionManager.getCwd());
 					// A restricted call is approved per call: a remembered ACP answer never covers it.
 					let cacheable = restrictedFolderReason(target, args, restrictions) === undefined;
-					if (target.name === "bash") {
+					if (isShellToolName(target.name)) {
 						const explicitAutoApprove = this.#isExplicitAutoApproveMode();
 						const { approvalMode, userPolicies } = resolveApprovalFromContext({
 							autoApprove: this.#autoApprove,
@@ -1272,7 +1272,7 @@ export class SessionTools {
 					// persisted ACP grant; inner handlers may mutate `args` in place.
 					const approvedCtx = (ctx ? { ...ctx, acpApprovedArgs: structuredCloneJSON(args) } : ctx) as never;
 					const command =
-						target.name === "bash" && args && typeof args === "object" && !Array.isArray(args)
+						isShellToolName(target.name) && args && typeof args === "object" && !Array.isArray(args)
 							? stringProperty(args, "command")
 							: undefined;
 					const commandContent = command
@@ -1392,7 +1392,7 @@ export class SessionTools {
 									toolCallId,
 									toolName: target.name,
 									title: permissionIntent.title,
-									...(target.name === "bash" ? { kind: "execute" } : {}),
+									...(isShellToolName(target.name) ? { kind: "execute" } : {}),
 									status: "pending",
 									rawInput: args,
 									...(commandContent ? { content: commandContent } : {}),

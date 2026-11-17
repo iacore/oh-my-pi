@@ -18,7 +18,7 @@ import type {
 import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { PipeStreams, shellBuiltins } from "@oh-my-pi/pi-natives";
 import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
-import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
+import { isPosixShell, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
 import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
 import { applyDirenvPreflight, type BashResult, executeBash } from "../exec/bash-executor";
 import { InternalUrlRouter } from "../internal-urls";
@@ -591,14 +591,37 @@ function resolveCommandCwd(cwd: string | undefined, sessionCwd: string, hoistedS
 }
 
 /**
- * Bash tool implementation.
+ * Per-dialect knobs for the shell tool: the `bash` default and the `fish`
+ * dialect, which parses every command with fish instead of the embedded bash
+ * engine.
+ */
+export interface BashToolDialect {
+	/** Wire name the model calls; `bash` by default. */
+	name?: string;
+	/** Card label; `Bash` by default. */
+	label?: string;
+	/** Shell that parses each command line; undefined runs the embedded bash engine. */
+	shell?: ShellConfig;
+	/** Tool description template; the bash prompt by default. */
+	description?: string;
+	/** Extra template variables for the description. */
+	descriptionContext?: (session: ToolSession) => Record<string, unknown>;
+}
+
+/**
+ * Shell tool implementation.
  *
- * Executes bash commands with optional timeout and working directory.
+ * Executes shell commands with optional timeout and working directory.
  */
 export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
-	readonly name = "bash";
+	readonly name: string;
+	readonly label: string;
+	readonly #shell: ShellConfig | undefined;
 	/** Bash reads `skill://` paths through its shell filesystem, including as a working directory. */
 	readonly readsSkillUris = true;
+	/** Description template: the bash prompt unless the dialect declared another. */
+	readonly #descriptionTemplate: string;
+	readonly #descriptionContext: ((session: ToolSession) => Record<string, unknown>) | undefined;
 	/**
 	 * The `bashInterceptor` hit for a call, checking the raw command and the one after a
 	 * leading `cd … &&` so the wrapper hides neither shell-navigation rules nor the
@@ -745,12 +768,12 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const command = typeof rawCommand === "string" ? rawCommand : "(missing)";
 		return [`Command: ${truncateForPrompt(command)}`];
 	};
-	readonly label = "Bash";
 	readonly loadMode = "essential";
 	get description(): string {
 		const evalBackends = resolveEvalBackends(this.session);
 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
-		return prompt.render(bashDescription, {
+		return prompt.render(this.#descriptionTemplate, {
+			...this.#descriptionContext?.(this.session),
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			// The deadline an omitted `timeout` resolves to, after the `tools.maxTimeout` cap.
 			defaultTimeoutSec: clampTimeout("bash", undefined, cfgToolsMaxTimeout.get(this.session.settings)),
@@ -789,7 +812,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		ptyRequestedFor(args.pty, args.command) ? "exclusive" : "shared";
 	readonly strict = true;
 
-	constructor(private readonly session: ToolSession) {}
+	constructor(
+		private readonly session: ToolSession,
+		dialect: BashToolDialect = {},
+	) {
+		this.name = dialect.name ?? "bash";
+		this.label = dialect.label ?? "Bash";
+		this.#shell = dialect.shell;
+		this.#descriptionTemplate = dialect.description ?? bashDescription;
+		this.#descriptionContext = dialect.descriptionContext;
+	}
 
 	/**
 	 * URL filesystem for one embedded-shell run: this session's context, cancelled by the run's own
@@ -822,7 +854,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 	/** Service launch mode: live `launch.enabled` while `bash` itself is an active tool. */
 	get #launchEnabled(): boolean {
-		return cfgLaunchEnabled.get(this.session.settings) === true && (this.session.isToolActive?.("bash") ?? true);
+		return cfgLaunchEnabled.get(this.session.settings) === true && (this.session.isToolActive?.(this.name) ?? true);
 	}
 
 	#formatResultOutput(result: BashResult | BashInteractiveResult): string {
@@ -999,7 +1031,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		command: string,
 	): Promise<{ text?: string; whole: boolean; spotlight?: SpotlightDetails } | undefined> {
 		const experiment = shapingExperiment(this.session);
-		if (!experiment?.shapesTool("bash")) return undefined;
+		if (!experiment?.shapesTool(this.name)) return undefined;
 		const built = this.#formatResultOutput(result);
 		let text = built;
 		let whole = false;
@@ -1018,7 +1050,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			}
 		}
 		const shaped = await shapeToolText(this.session, toolCallId, {
-			tool: "bash",
+			tool: this.name,
 			text,
 			plain: built + formatOutputNotice(outputMeta().truncationFromSummary(result, { direction: "tail" }).get()),
 			plainWidthCut: whole && widthCut,
@@ -1157,10 +1189,12 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					});
 					await reported;
 				};
-				const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
+				const { path: artifactPath, id: artifactId } =
+					(await this.session.allocateOutputArtifact?.(this.name)) ?? {};
 				const wallTimeStart = performance.now();
 				try {
 					const result = await executeBash(options.command, {
+						shellOverride: this.#shell,
 						cwd: options.commandCwd,
 						env: options.sessionEnv,
 						minimize: !nativeShapingOff(this.session),
@@ -1932,7 +1966,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 
 		// Allocate artifact for truncated output storage
-		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
+		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.(this.name)) ?? {};
 
 		const interactiveUi = canUseInteractiveBashPty(ptyRequested, ctx) ? ctx?.ui : undefined;
 		if (ptyRequested && !interactiveUi) {
@@ -1959,6 +1993,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			: undefined;
 		const result: BashResult | BashInteractiveResult = interactiveUi
 			? await runInteractiveBashPty(interactiveUi, {
+					shell: this.#shell?.shell,
 					// PTY bypasses executeBash, so feed it the direnv-transformed
 					// command + direnv env (backendPreflight is defined whenever this
 					// branch runs, since both gate on canUseInteractiveBashPty).
@@ -1976,6 +2011,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			: // executeBash runs its OWN direnv preflight internally — pass the RAW
 				// command here so the unset prefix is not applied twice.
 				await executeBash(command, {
+					shellOverride: this.#shell,
 					cwd: commandCwd,
 					env: sessionEnv,
 					sessionKey: sessionId,

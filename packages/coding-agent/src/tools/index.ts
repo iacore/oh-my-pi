@@ -50,6 +50,7 @@ import { AskTool } from "./ask";
 import { AstEditTool } from "./ast-edit";
 import { AstGrepTool } from "./ast-grep";
 import { BashTool } from "./bash";
+import { createFishTool } from "./fish";
 import { CdTool } from "./cd";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
@@ -100,7 +101,7 @@ import {
 	cfgWebSearchEnabled,
 } from "./settings";
 import { cfgAutolearnEnabled } from "../autolearn/settings";
-import { cfgBashEnabled } from "../exec/settings";
+import { cfgBashEnabled, cfgFishEnabled } from "../exec/settings";
 import { cfgEditMode } from "../edit/settings";
 import { cfgCompactionExperimentalContextManagement } from "../session/context-settings";
 import { cfgPythonInterpreter } from "../eval/settings";
@@ -610,6 +611,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	read: s => new ReadTool(s),
 	security_scan: s => new SecurityScanTool(s),
 	bash: s => new BashTool(s),
+	fish: createFishTool,
 	cd: s => new CdTool(s),
 	edit: s => new EditTool(s),
 	ast_grep: s => new AstGrepTool(s),
@@ -800,7 +802,9 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		// Without an edit tool, bash is the remaining way to modify existing files.
 		if (name === "edit") return !editDisabled;
-		if (name === "bash") return editDisabled || cfgBashEnabled.get(session.settings);
+		if (name === "bash")
+			return editDisabled || requestedTools?.includes("bash") === true || cfgBashEnabled.get(session.settings);
+		if (name === "fish") return editDisabled || cfgFishEnabled.get(session.settings);
 		if (name === "eval") return allowEval;
 		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "ida") return cfgIdaAvailable.get(session.settings);

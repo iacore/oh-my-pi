@@ -50,7 +50,7 @@ export function buildCallContext(
 		for (const block of message.content) {
 			if (block.type === "toolCall") {
 				if (block.id === toolCallId) break;
-				if (block.name === "bash" && typeof block.arguments.command === "string") {
+				if ((block.name === "bash" || block.name === "fish") && typeof block.arguments.command === "string") {
 					turnCommands.push(block.arguments.command);
 				}
 			} else if (block.type === "text") {
@@ -101,7 +101,7 @@ export function callSummary(tool: string, args: unknown): string {
  */
 export function callCommand(tool: string, args: unknown): string | undefined {
 	if (tool === "read") return undefined;
-	if (tool === "bash" && isRecord(args) && typeof args.command === "string") return args.command;
+	if ((tool === "bash" || tool === "fish") && isRecord(args) && typeof args.command === "string") return args.command;
 	if (tool === "eval" && isRecord(args) && typeof args.code === "string") return args.code;
 	return callSummary(tool, args);
 }

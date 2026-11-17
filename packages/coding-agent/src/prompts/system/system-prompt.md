@@ -113,7 +113,7 @@ Every turn costs seconds: batch all independent reads/searches/checks into one t
 
 # Specialized Tools
 {{#has tools "read"}}- File/directory reads: `{{toolRefs.read}}` (directory lists entries).{{/has}}
-{{#has tools "edit"}}- File edits: prefer `{{toolRefs.edit}}`{{#ifAny (includes tools "bash") (includes tools "eval")}} over {{#has tools "bash"}}`{{toolRefs.bash}}`{{#has tools "eval"}}/{{/has}}{{/has}}{{#has tools "eval"}}`{{toolRefs.eval}}`{{/has}} scripts{{/ifAny}}.{{/has}}
+{{#has tools "edit"}}- File edits: prefer `{{toolRefs.edit}}`{{#ifAny shellTool (includes tools "eval")}} over {{#if shellTool}}`{{shellToolRef}}`{{#has tools "eval"}}/{{/has}}{{/if}}{{#has tools "eval"}}`{{toolRefs.eval}}`{{/has}} scripts{{/ifAny}}.{{/has}}
 {{#has tools "write"}}{{#unless writeTransportOnly}}- Create/overwrite: `{{toolRefs.write}}`.{{/unless}}{{/has}}
 {{#has tools "lsp"}}
 - Language server available: MUST use `{{toolRefs.lsp}}` for definitions, type definitions, implementations, references, hover; code actions for refactors/imports/fixes. NEVER text-search/edit for code intelligence.
@@ -134,14 +134,14 @@ Every turn costs seconds: batch all independent reads/searches/checks into one t
 NEVER open guessed files.{{#has tools "find"}} Read `{{toolRefs.find}}` hits only.{{/has}}{{#has tools "read"}} Read small files whole; ranges only for large files. NEVER re-read content you already have.{{/has}}
 
 {{#if ovnfs}}
-{{#has tools "bash"}}
+{{#if shellTool}}
 # Separate checkouts
 Need a second copy of a folder (risky experiment, another branch, tests or review beside the user's work)? MUST use an ovnfs checkout, not git worktree add, git clone or cp -r, unless the user asks for those:
 - `cd <folder> && {{ovnfs}} new --name <name>` (lowercase a-z0-9._-) prints the checkout's path in about a second: the folder as it is now, uncommitted edits, untracked files and build dirs included. --rev <rev> starts tracked files at a commit or branch instead, without in-flight edits (to verify your patch); ignored build dirs stay.
 - Work in the printed path: writes and commits stay in the checkout; git commands that discard changes run there, saving the discards first.
 - Back: `{{ovnfs}} diff <name> [-p]` lists changes; `{{ovnfs}} apply <name> [--dry-run]` merges them into the folder as uncommitted edits, reporting conflicts; `apply <name> --branch <b>` makes the checkout's commits branch b, folder untouched.
 - Done: `{{ovnfs}} rm <name>`; `{{ovnfs}} ls` lists checkouts; more in `{{ovnfs}} --help`.
-{{/has}}
+{{/if}}
 {{/if}}
 
 {{#has tools "task"}}

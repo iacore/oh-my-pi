@@ -50,7 +50,7 @@ export function getPermissionIntent(
 	args: unknown,
 ): { toolName: string; title: string; paths?: string[]; cacheKey: string } | undefined {
 	const input = isRecord(args) ? args : {};
-	if (toolName === "bash") {
+	if (toolName === "bash" || toolName === "fish") {
 		const command = stringProperty(input, "command")?.slice(0, 80);
 		return { toolName, title: command || toolName, cacheKey: toolName };
 	}

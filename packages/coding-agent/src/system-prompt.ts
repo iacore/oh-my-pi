@@ -431,7 +431,7 @@ export async function loadSystemPromptFiles(options: LoadContextFilesOptions = {
 	return userLevel?.content ?? null;
 }
 
-export const DEFAULT_SYSTEM_PROMPT_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
+export const DEFAULT_SYSTEM_PROMPT_TOOL_NAMES = ["read", "fish", "edit", "write"] as const;
 
 export interface SystemPromptToolMetadata {
 	label: string;
@@ -1015,6 +1015,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		if (!toolPromptNames.has(mounted.name)) toolPromptNames.set(mounted.name, `${XD_URL_PREFIX}${mounted.name}`);
 	}
 	const toolRefs = Object.fromEntries(toolPromptNames.entries());
+	// The shell tool's dialect: `fish` when the session runs the fish tool,
+	// `bash` when it asked for bash by name. Templates gate shell guidance on
+	// this instead of the `bash` name, which is off by default on `custom`.
+	const shellTool = toolNames.includes("fish") ? "fish" : toolNames.includes("bash") ? "bash" : "";
 	const xdevToolNames = new Set(xdevTools.map(mounted => mounted.name));
 	// A direct custom tool can share a name with a retained built-in device.
 	// Presence in both toolNames and tools proves it still has a top-level definition.
@@ -1107,6 +1111,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		inlineToolDescriptors,
 		toolListMode,
 		toolRefs,
+		shellTool,
+		shellToolRef: shellTool === "" ? "" : (toolRefs[shellTool] ?? shellTool),
 		environment,
 		contextFiles: promptContextFiles,
 		agentsMdSearch: { files: agentsMdFiles },

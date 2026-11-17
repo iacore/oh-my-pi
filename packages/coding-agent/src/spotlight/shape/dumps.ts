@@ -42,7 +42,10 @@ export async function shapeDumpOutput(run: Run, text: string): Promise<string | 
 	let saved: Promise<string> | undefined;
 	const verbatim = () => (saved ??= run.sink.save(raw, run.input.tool));
 	const sourceDump =
-		run.input.tool === "bash" && printsFiles(command) && !readsOnlyData(command) && namesSource(command);
+		(run.input.tool === "bash" || run.input.tool === "fish") &&
+		printsFiles(command) &&
+		!readsOnlyData(command) &&
+		namesSource(command);
 	const view = sourceDump ? await jsonFileDump(run, raw, verbatim) : await compactDump(run, raw, verbatim);
 	return view?.lines.join("\n");
 }

@@ -1660,7 +1660,7 @@ export { Type } from "./legacy-typebox";
 
 /** Narrow a `tool_result` event to the `bash` tool. */
 export function isBashToolResult(e: ToolResultEvent): e is BashToolResultEvent {
-	return e.toolName === "bash";
+	return e.toolName === "bash" || e.toolName === "fish";
 }
 
 /** Narrow a `tool_result` event to the `read` tool. */

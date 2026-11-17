@@ -38,6 +38,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	ast_grep: astGrepToolRenderer,
 	ast_edit: astEditToolRenderer,
 	bash: bashToolRenderer,
+	fish: bashToolRenderer,
 	debug: debugToolRenderer,
 	eval: evalToolRenderer,
 	edit: editToolRenderer,

@@ -1,5 +1,6 @@
 import { RunTrace } from "@oh-my-pi/pi-natives";
 import { isShellTrace, type ShellTrace, type ShellVizPreferences, type ShellVizPresentation } from "@oh-my-pi/pi-wire";
+import { isShellToolName } from "../tools/names";
 import { defaultShellVizPreferences, readShellPresentation, shellVisualization } from "../tools/shell-viz";
 import { changeShellVizPreferences, shellVizEventAction } from "../tools/shell-trace";
 import { ShellVisualizer } from "../apps/shell-visualizer";
@@ -589,7 +590,7 @@ export class ToolExecutionComponent extends Container {
 			enumerable: true,
 		});
 		Object.defineProperty(this.#renderState, "shellPresentation", {
-			get: () => (this.#toolName === "bash" ? this.#getShellPresentation() : undefined),
+			get: () => (isShellToolName(this.#toolName) ? this.#getShellPresentation() : undefined),
 			enumerable: true,
 		});
 		ensureThemeSync();
@@ -630,7 +631,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	#updateShellTrace(details: unknown): void {
-		if (this.#toolName !== "bash" || details === this.#shellTraceDetails) return;
+		if (!isShellToolName(this.#toolName) || details === this.#shellTraceDetails) return;
 		this.#shellTraceDetails = details;
 		const candidate = isRecord(details) ? details.trace : undefined;
 		if (candidate === undefined || candidate === this.#shellTrace) return;
@@ -656,7 +657,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	#getShellPresentation(): ShellVizPresentation | undefined {
-		if (this.#toolName !== "bash" || !chatTranscriptDisplayPreferences.shellVisualization) return undefined;
+		if (!isShellToolName(this.#toolName) || !chatTranscriptDisplayPreferences.shellVisualization) return undefined;
 		const script =
 			this.#shellTrace?.script ??
 			(isRecord(this.#args) && typeof this.#args.command === "string" ? this.#args.command : undefined);
@@ -702,7 +703,7 @@ export class ToolExecutionComponent extends Container {
 
 	/** Handle exactly the shared native action vocabulary; inspector uses this same controller. */
 	shellVizAction(action: string): void {
-		if (this.#toolName !== "bash" || !chatTranscriptDisplayPreferences.shellVisualization) return;
+		if (!isShellToolName(this.#toolName) || !chatTranscriptDisplayPreferences.shellVisualization) return;
 		if (action === "inspect") {
 			this.openShellVisualizer();
 			return;
@@ -748,7 +749,11 @@ export class ToolExecutionComponent extends Container {
 
 	/** Open the focused inspector without intercepting composer input while it is closed. */
 	openShellVisualizer(): void {
-		if (this.#toolName !== "bash" || !chatTranscriptDisplayPreferences.shellVisualization || !this.#ui.showOverlay)
+		if (
+			!isShellToolName(this.#toolName) ||
+			!chatTranscriptDisplayPreferences.shellVisualization ||
+			!this.#ui.showOverlay
+		)
 			return;
 		if (this.#shellInspector) return;
 		const inspector = new ShellVisualizer({
@@ -1220,7 +1225,7 @@ export class ToolExecutionComponent extends Container {
 
 	/** Mirrors the card collapsed or expanded in the terminal, so `Ctrl+O` and native toggles share one state. */
 	handleNativeEvent(event: NativeUiEvent): void {
-		if (this.#toolName === "bash" && chatTranscriptDisplayPreferences.shellVisualization) {
+		if (isShellToolName(this.#toolName) && chatTranscriptDisplayPreferences.shellVisualization) {
 			const action = shellVizEventAction(event, this.#shellPreferences);
 			if (action) {
 				this.shellVizAction(action);
@@ -1342,7 +1347,7 @@ export class ToolExecutionComponent extends Container {
 			this.#sealed,
 			this.#parkedBackground,
 			this.#showImages,
-			this.#toolName === "bash" && chatTranscriptDisplayPreferences.shellVisualization,
+			isShellToolName(this.#toolName) && chatTranscriptDisplayPreferences.shellVisualization,
 			this.#displayInputVersion,
 			this.#toolActivityVisible,
 			this.#toolOutputDetailsHidden,
@@ -1688,7 +1693,7 @@ export class ToolExecutionComponent extends Container {
 		// TUI startup, so a result rendered before it lands must re-shape once it
 		// does (it gates Image children vs text fallback in #rebuildDisplay); keyed
 		// here for the same reason markdown.ts keys its render cache on it.
-		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#argsComplete ? "1" : "0"}|${this.#executionStarted ? "1" : "0"}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}|${imageLinksEnabled()}|${this.#toolName === "bash" && chatTranscriptDisplayPreferences.shellVisualization}`;
+		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#argsComplete ? "1" : "0"}|${this.#executionStarted ? "1" : "0"}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}|${imageLinksEnabled()}|${isShellToolName(this.#toolName) && chatTranscriptDisplayPreferences.shellVisualization}`;
 		if (key === this.#lastDisplayKey && this.#displayBuilt) return;
 		this.#lastDisplayKey = key;
 
@@ -2244,7 +2249,7 @@ export class ToolExecutionComponent extends Container {
 		if (this.#renderer && !this.#tool?.renderResult && this.#rawDetails !== undefined) {
 			context.rawDetails = this.#rawDetails;
 		}
-		if (this.#toolName === "bash") {
+		if (isShellToolName(this.#toolName)) {
 			this.#renderState.shellTrace = this.#shellTrace;
 			this.#renderState.shellReplayEpoch = this.#shellReplayEpoch;
 			// Bash needs render context even before a result exists. The renderer uses the pending-call args
