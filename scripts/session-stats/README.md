@@ -13,6 +13,7 @@ scripts/session-stats/
   analyze.py       # tools | edits | followups subcommands over the synced db
   audit.ts         # LLM-assisted token-usage audit (no sync needed)
   audit-prompt.md  # system prompt for the audit classifier
+  speed.py         # decode tok/s + TTFT per provider/model (no sync needed)
 ```
 
 ## One-time prep
@@ -71,6 +72,25 @@ All three accept `-n N` / `--folder SUBSTR` to scope the query, plus
 audit reads each call's `is_error` flag as the authoritative success/failure
 signal and decodes hashline op kinds (`replace`, `insert after`, `delete`,
 `replace_block`, …) into the verb distribution.
+
+## Decode speed (`speed.py`)
+
+Standalone stdlib script — reads session JSONL directly and reports the
+`duration`/`ttft` the harness records per assistant turn, so it answers
+"what tok/s did this provider actually give us" without a sync or a benchmark.
+
+```sh
+python3 scripts/session-stats/speed.py                       # whole corpus
+python3 scripts/session-stats/speed.py --since 3d --by day   # daily step chart
+python3 scripts/session-stats/speed.py --model deepseek --json /tmp/speed.json
+```
+
+`tok/s = usage.output / ((duration - ttft) / 1000)`. Turns whose decode window
+is under `--min-decode-ms` (default 250) are dropped: a single-chunk response
+records `ttft == duration`, and dividing by a near-zero window produces
+six-digit rates that poison the percentiles. Branched sessions duplicate whole
+transcripts, so records are deduped by entry id. Medians are over calls, so a
+few long stalls do not drag the headline number.
 
 ## Usage audit (`audit.ts`)
 
