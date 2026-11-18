@@ -20,6 +20,7 @@ import { TIER_RANK } from "../tools/approval";
 import { AgentProtocolHandler } from "./agent-protocol";
 import { ArtifactProtocolHandler } from "./artifact-protocol";
 import { AttachmentProtocolHandler } from "./attachment-protocol";
+import { BtwProtocolHandler } from "./btw-protocol";
 import { CfgProtocolHandler } from "./cfg-protocol";
 import { ConflictProtocolHandler } from "./conflict-protocol";
 import { HistoryProtocolHandler } from "./history-protocol";
@@ -113,6 +114,7 @@ export class InternalUrlRouter {
 		this.register(new MemoryProtocolHandler());
 		this.register(new OutProtocolHandler());
 		this.register(new AgentProtocolHandler());
+		this.register(new BtwProtocolHandler());
 		this.register(new HistoryProtocolHandler());
 		this.register(new ArtifactProtocolHandler());
 		this.register(new LocalProtocolHandler());
