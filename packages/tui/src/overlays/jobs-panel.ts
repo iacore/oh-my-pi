@@ -105,7 +105,7 @@ const STATUS_GLYPH: Record<JobsPanelJob["status"], TspSpan> = {
 };
 
 /** The list row's icon per job type (Tern icon names); other types read as a generic job. */
-const TYPE_ICON: Record<string, string> = { bash: "bash", task: "agent" };
+const TYPE_ICON: Record<string, string> = { bash: "bash", fish: "bash", task: "agent" };
 
 /** Output tail rows the terminal fallback shows under the selected job. */
 const FALLBACK_TAIL_LINES = 8;

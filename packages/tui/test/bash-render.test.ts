@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { RenderResultOptions } from "../src/tools/renderer";
 import { getThemeByName, setThemeInstance, type Theme } from "@oh-my-pi/pi-tui/theme";
-import { bashToolRenderer, formatBackgroundNotice } from "@oh-my-pi/pi-tui/tools/bash";
+import { bashToolRenderer, fishToolRenderer, formatBackgroundNotice } from "@oh-my-pi/pi-tui/tools/bash";
 import { previewWindowRows } from "@oh-my-pi/pi-tui/render/render-utils";
 import { ImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
@@ -491,5 +491,25 @@ describe("bashToolRenderer", () => {
 		} finally {
 			home.mockRestore();
 		}
+	});
+});
+
+describe("fishToolRenderer", () => {
+	const result = { content: [{ type: "text", text: "ok" }], details: { exitCode: 0 } };
+
+	it("draws the fish dialect as Fish, never Bash", () => {
+		const view = fishToolRenderer.describeResult(result, { expanded: false, isPartial: false }, { command: "ls" });
+		const title = JSON.stringify(view.tool?.title);
+		expect(title).toContain("Fish");
+		expect(title).not.toContain("Bash");
+	});
+
+	it("names a fish job after its `name` argument", () => {
+		const view = fishToolRenderer.describeResult(
+			result,
+			{ expanded: false, isPartial: false },
+			{ command: "ls", name: "build" },
+		);
+		expect(JSON.stringify(view.tool?.title)).toContain("Fish · build");
 	});
 });

@@ -6,7 +6,7 @@
 import { askToolRenderer } from "./ask";
 import { astEditToolRenderer } from "./ast-edit";
 import { astGrepToolRenderer } from "./ast-grep";
-import { bashToolRenderer } from "./bash";
+import { bashToolRenderer, fishToolRenderer } from "./bash";
 import { debugToolRenderer } from "./debug";
 import { editToolRenderer } from "./edit";
 import { evalToolRenderer } from "./eval";
@@ -38,7 +38,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	ast_grep: astGrepToolRenderer,
 	ast_edit: astEditToolRenderer,
 	bash: bashToolRenderer,
-	fish: bashToolRenderer,
+	fish: fishToolRenderer,
 	debug: debugToolRenderer,
 	eval: evalToolRenderer,
 	edit: editToolRenderer,

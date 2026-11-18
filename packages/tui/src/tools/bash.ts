@@ -870,11 +870,25 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 	} satisfies ToolRenderer<TArgs, BashToolDetails>;
 }
 
+/**
+ * What both shell dialects share: the same card, arrows and footer. Only the
+ * verb differs — a `fish` call must never be drawn as `Bash`.
+ */
+const shellRendererBody = {
+	resolveCommand: (args: BashRenderArgs | undefined) => args?.command,
+	resolveCwd: (args: BashRenderArgs | undefined) => args?.cwd,
+	resolveEnv: (args: BashRenderArgs | undefined) => args?.env,
+	showHeader: false,
+} satisfies Omit<ShellRendererConfig<BashRenderArgs>, "resolveTitle">;
+
 /** Renders bash command previews and output. */
 export const bashToolRenderer = createShellRenderer<BashRenderArgs>({
+	...shellRendererBody,
 	resolveTitle: args => (args?.name ? `Bash · ${String(args.name)}` : "Bash"),
-	resolveCommand: args => args?.command,
-	resolveCwd: args => args?.cwd,
-	resolveEnv: args => args?.env,
-	showHeader: false,
+});
+
+/** Renders the fish dialect of the shell tool: same body, its own verb. */
+export const fishToolRenderer = createShellRenderer<BashRenderArgs>({
+	...shellRendererBody,
+	resolveTitle: args => (args?.name ? `Fish · ${String(args.name)}` : "Fish"),
 });
