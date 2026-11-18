@@ -10,7 +10,7 @@ There are two different bash execution surfaces in coding-agent:
 
 1. **Tool-call surface** (`toolName: "bash"`): used when the model calls the bash tool.
    - Entry point: `BashTool.execute()`.
-   - Parameters include `command`, optional `timeout`, `cwd`, `pty`, and, when `async.enabled` is true, `async`. With `launch.enabled` (default `true`), `name` and `ready` select managed service execution. There is no model-facing `env` parameter.
+   - Parameters include `command`, optional `timeout`, `cwd`, `pty`, and, when `async.enabled` is true, `async`. With `launch.enabled` (default `true`), `name` and `ready` select managed service execution. `notify` is present with either. There is no model-facing `env` parameter.
 2. **User bang-command surface** (`!cmd` from interactive input or RPC `bash` command): session-level helper path.
    - Entry point: `AgentSession.executeBash()`.
 
@@ -26,9 +26,11 @@ Set `bash.enabled: false` in settings to remove the model-facing `bash` tool fro
 
 - trims service names and normalizes empty readiness fields,
 - extracts a leading single-line `cd <path> && ...` into `cwd` when `cwd` was not supplied, unless the path needs shell expansion,
-- rejects `async: true` when `async.enabled` is false,
+- treats a nonblank `notify` regex without a service name as `async: true`, and rejects either when `async.enabled` is false,
+- rejects a `notify` regex that does not compile, or a session that cannot take its notices, before running anything,
+- passes `notify` with a service name to the launch broker, which reports the service's matching output,
 - defaults finite-command `timeout` to 300 seconds; `0` explicitly disables the command deadline,
-- rejects `async: true` or any supplied `timeout` in named-service mode; readiness uses `ready.timeout`,
+- ignores `async: true` and any supplied `timeout` in named-service mode, adding a notice for each; readiness uses `ready.timeout`,
 - ignores `ready` without a nonblank `name`, adding a notice.
 
 There are no structured `head` or `tail` parameters. Command text is never rewritten for internal URLs. The embedded shell and its in-process coreutils resolve `scheme://` paths through an injected async filesystem (`InternalUrlFilesystem`) at the moment of each operation, so URLs built from variables, redirections, globs, `cd`, and a URL `cwd` all work. File-backed schemes operate on their backing files, and `ln -s` from one to a host path stores the backing file's path; rendered resources are read-only. An external program has no view of that filesystem, so the program path, every argument (`skill://example-skill/tool.py`, `--index=skill://example-skill/data`), and the working directory it is spawned with are translated to the files they alias. Translation covers whole arguments and `--option=URL` values only; a bare scheme root (`local://`), a root followed by words (`skill:// external command`), and URLs embedded in other text stay literal, as do schemes the filesystem does not route (`https://`, `s3://`) and arguments naming a scheme that aliases no file (`omp://`, `history://`). A URL the provider rejects (an unknown skill, a path escaping its root) fails the command with the provider's error. External programs cannot start in a scheme that aliases no file, nor in a read-only one (`skill://`, `artifact://`), since the child could write anywhere under its working directory; read-only is otherwise enforced only for builtins, so an external program handed a translated read-only path can still write it. `xargs`, `find -exec`/`-execdir`, and `ifne` run their commands through the shell's own dispatch in a subshell, so `… | xargs cat` reaches the in-process `cat` and its URL arguments. The finite-command routes also load configured direnv/devenv changes. SDK callers of the executor can supply an `env` overlay; the bash tool itself uses shell assignments for per-command variables.
@@ -36,6 +38,8 @@ There are no structured `head` or `tail` parameters. Command text is never rewri
 ### Approval policy
 
 The bash tool has the `exec` approval tier. `bash.patterns` rules can explicitly `allow`, `deny`, or `prompt`. By default, allow rules must match the entire command and cannot approve shell-control syntax. The opt-in `bash.allowCompoundCommands: true` additionally recognizes only flat chains of two or more literal commands separated by unquoted `&&`. It resolves the ordered rules independently against each original raw segment, with the first matching rule winning for that segment.
+
+For `allow` rules, leading `NAME=value` assignments are stripped only when `NAME` exactly matches an entry in `bash.allowedEnvVars` or the rule's `env` list; `deny` and `prompt` rules check tokenized segments both with and without leading assignments.
 
 Restrictions are combined conservatively across the chain (and across tokenized segments of non-eligible compound commands): any explicit segment or whole-chain `deny` wins, otherwise any explicit `prompt` wins. A `deny` or `prompt` pattern matching the full chain but no individual segment remains a whole-chain restriction, while later broad restrictions do not override an earlier match for a segment. Operator `deny` rules from `Settings.grantAuthority()` also take precedence over project-layer `bash.patterns`. These restrictions resolve before the existing raw and canonical critical-command checks.
 
@@ -139,7 +143,7 @@ The result carries `details.service` (`name`, `state`, `ready`, `timedOut`, opti
 Session-level bang-command executions pass the session ID captured when execution starts, preserving result ownership across a branch or session transition.
 
 Tool-call executions pass `sessionKey: this.session.getSessionId?.()`, when available, including calls that start in the foreground on the auto-background path, so variables, functions, and shell options carry over between calls. A managed job that starts in the background (`async: true`, or no foreground wait) uses a per-job `<session>:async:<jobId>` key instead, so it never holds the session's shell. In both surfaces, a session key isolates shell reuse per session; without one, reuse falls back to shell config/snapshot/env.
-Concurrent calls never share one `Shell`: the native session runs one command at a time and `Shell.abort()` kills every in-flight run on it. `executeBash()` tracks in-flight keys in `shellSessionsInUse`; while a key is busy, overlapping calls skip the cache and create a one-shot `Shell` (the same isolation as quarantined sessions), and `BashTool` says so in the call's result (`onSessionShellBusy`). A call that moves to the background keeps the session's shell until it finishes. Only the owning call releases the in-use flag or deletes the cached session in its `finally`.
+Concurrent calls never share one `Shell`: the native session runs one command at a time and `Shell.abort()` kills every in-flight run on it. `executeBash()` tracks in-flight keys in `shellSessionsInUse`; while a key is busy, overlapping calls skip the cache and run in a one-shot `Shell.fork()` of the session's shell, which starts from its state before the running command. When a fork's run settles, `executeBash()` hands it to `Shell.adopt()`: what it set (variables, functions, aliases, options, traps; not the working directory or the hash table) carries back into the session's shell at the end of its running command (at once when it is idle) and into every later fork; a name both set keeps the value of the command that ended last. A fork that left background jobs running is retained while they run, as a released session is. `BashResult.fork` reports both; `BashTool` adds a notice only when the state could not be carried back or background jobs stay in the fork. A call that moves to the background keeps the session's shell until it finishes. Only the owning call releases the in-use flag or deletes the cached session in its `finally`.
 
 `exit`, errexit (`set -e`), and a stray top-level `return`/`break` end the command, not the native session; a timeout, cancellation, or failed run quarantines the session and the next call starts a fresh one.
 
@@ -190,7 +194,7 @@ The per-command child environment is then built by `buildNonInteractiveEnv()` (`
 - editor prompts disabled (`GIT_EDITOR=true`, `GIT_SEQUENCE_EDITOR=true`, `EDITOR=true`, `VISUAL=true`),
 - terminal/credential prompts reduced (`TERM=dumb`, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `SSH_ASKPASS` set to the resolved `false` executable or `"false"`, `NO_COLOR=1`, `CI=true` unless `PI_BASH_NO_CI`/`CLAUDE_BASH_NO_CI` is set),
 - package-manager/tooling automation flags for non-interactive behavior (npm/pnpm/yarn/pip/cargo/terraform/gh, …),
-- locale pinned to `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` (byte-order collation, `C` numbers and messages, UTF-8 text) over any inherited locale, unless the caller or direnv env sets `LANG` or an `LC_*` variable; user `!` commands keep the inherited locale, with the UTF-8 default applied on Windows only when none is set,
+- locale pinned to `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` (byte-order collation, `C` numbers and messages, UTF-8 text) over any inherited locale, unless the caller or direnv env sets `LANG` or an `LC_*` variable; macOS ships no `C.UTF-8`, so there `LANG` and every `LC_*` category are `C` except `LC_CTYPE=en_US.UTF-8`, under an empty `LC_ALL`; user `!` commands keep the inherited locale, with the UTF-8 default applied on Windows only when none is set,
 - on Windows, Python UTF-8 stdio defaults (`PYTHONIOENCODING`, `PYTHONUTF8`) are added when neither is inherited or passed.
 
 ## Streaming and cancellation

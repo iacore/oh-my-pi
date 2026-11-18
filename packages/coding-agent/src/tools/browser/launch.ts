@@ -44,17 +44,19 @@ import stealthCodecsScript from "../puppeteer/12_stealth_codecs.txt" with { type
 import stealthWorkerScript from "../puppeteer/13_stealth_worker.txt" with { type: "text" };
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { withDownload } from "../../downloads/activity";
-import { findUserDataDirInArgs, gracefulKillTreeOnce, probeCdpResponse } from "./attach";
+import { TOOL_TIMEOUTS } from "../tool-timeouts";
+import { findUserDataDirInArgs, gracefulKillTreeOnce, killTreeOnce, probeCdpResponse } from "./attach";
 
 export const DEFAULT_VIEWPORT = { width: 1365, height: 768, deviceScaleFactor: 1.25 };
 
-/**
- * Per-CDP-message timeout applied to every puppeteer launch/connect. Set above
- * `TOOL_TIMEOUTS.browser.max` (30s) so the agent-side wall-clock is the canonical
- * limit; this constant only catches genuinely stuck CDP sockets (renderer wedged,
- * connection dropped, etc.).
- */
+/** Short handshake budget for launch and registry connections. */
 export const BROWSER_PROTOCOL_TIMEOUT_MS = 60_000;
+
+/**
+ * Keep CDP requests alive through the largest browser call budget; the
+ * supervisor owns the execution deadline and recovers a stalled worker.
+ */
+export const BROWSER_PAGE_PROTOCOL_TIMEOUT_MS = TOOL_TIMEOUTS.browser.max * 1000 + 1_000;
 const ENABLE_AUTOMATION_FLAG = "--enable-automation";
 // Automation-tell launch flags that puppeteer-core adds by default. We suppress
 // them via `ignoreDefaultArgs` (the supported escape hatch) to mirror xxxx's
@@ -302,6 +304,12 @@ export function browserConnection(browser: Browser): Connection {
 
 function isCdpConnection(value: unknown): value is Connection {
 	return isRecord(value) && typeof value.send === "function" && typeof value.createSession === "function";
+}
+
+/** CDP target id; puppeteer keeps it private (`_targetId`). */
+export function privateTargetId(target: Target): string | undefined {
+	const raw = target as unknown as { _targetId?: unknown };
+	return typeof raw._targetId === "string" ? raw._targetId : undefined;
 }
 
 /** Return device descriptors from the already-loaded Puppeteer module. */
@@ -654,7 +662,8 @@ export function buildHeadlessLaunchArgs(
 		DISABLE_AUTOMATION_CONTROLLED_ARG,
 		"--allow-file-access-from-files",
 		"--hide-scrollbars",
-		"--enable-features=WebMCPTesting,DevToolsWebMCPSupport",
+		// Chromium 157 removed `WebMCPTesting`, which used to imply `WebMCP`.
+		"--enable-features=WebMCP,WebMCPTesting,DevToolsWebMCPSupport",
 		`--window-size=${viewport.width},${viewport.height}`,
 		...RENDERER_PRIORITY_ARGS,
 	];
@@ -738,7 +747,7 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 			const wsEndpoint = pipe ? await activePortEndpoint(activePortFile, staleActivePort) : browser.wsEndpoint();
 			return { browser, wsEndpoint, userDataDir };
 		} catch (error) {
-			await closeLaunchedBrowser(browser);
+			await closeLaunchedBrowser({ browser, userDataDir });
 			throw error;
 		}
 	} catch (error) {
@@ -747,14 +756,31 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 	}
 }
 
-/** Close a browser {@link launchHeadlessBrowser} started, force-killing its process tree when the close hangs. */
-export async function closeLaunchedBrowser(browser: Browser): Promise<void> {
-	const proc = browser.process();
+/**
+ * Close a browser {@link launchHeadlessBrowser} started.
+ *
+ * With an omp-owned `userDataDir` (deleted next) a graceful shutdown saves
+ * nothing that survives, so the process tree is killed outright. That also
+ * spares builds whose graceful shutdown never finishes (observed: Chrome for
+ * Testing 150 on macOS 27 outlives both `Browser.close` and SIGTERM) the close
+ * timeout plus the SIGTERM grace on every close. A caller-supplied profile
+ * (`userDataDir` undefined) gets `browser.close()` first, force-killing the
+ * tree when that hangs.
+ */
+export async function closeLaunchedBrowser({
+	browser,
+	userDataDir,
+}: Pick<LaunchHeadlessResult, "browser" | "userDataDir">): Promise<void> {
+	const pid = browser.process()?.pid;
+	if (userDataDir !== undefined && pid !== undefined) {
+		await killTreeOnce(pid).catch(() => undefined);
+		return;
+	}
 	try {
 		await withTimeout(browser.close(), HEADLESS_CLOSE_TIMEOUT_MS, "Timed out closing headless browser");
 	} catch (err) {
 		logger.debug("Failed to close headless browser; force-killing", { error: toError(err).message });
-		if (proc?.pid !== undefined) await gracefulKillTreeOnce(proc.pid).catch(() => undefined);
+		if (pid !== undefined) await gracefulKillTreeOnce(pid).catch(() => undefined);
 	}
 }
 

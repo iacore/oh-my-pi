@@ -3136,7 +3136,7 @@ pub struct SessionState {
 	pub message_count: i64,
 	#[serde(rename = "queuedMessageCount", default = "default_session_state_queued_message_count")]
 	pub queued_message_count: i64,
-	/// Background jobs or deliveries can still inject a follow-up and wake the session.
+	/// Background jobs, their deliveries, child agents or queued peer messages can still wake the session.
 	#[serde(rename = "hasPendingAsyncWork", default = "default_session_state_has_pending_async_work")]
 	pub has_pending_async_work: bool,
 	/// Idle with nothing queued or pending; same predicate as `session_settled`.
@@ -3208,6 +3208,17 @@ pub struct BashResult {
 	/// The embedded shell's final `ShellTrace` of the run; only when the caller asked for one.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub trace: Option<Map<String, Value>>,
+	/// Set when the command overlapped another one on the session's persistent shell and ran in a fork of it.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub fork: Option<ShellForkOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShellForkOutcome {
+	/// What the command set carried back into the session's shell; `false`: it stayed in the fork.
+	pub carried: bool,
+	/// It left background jobs running in the fork, where later commands' `jobs`, `wait` and `%N` miss them.
+	pub jobs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -4531,6 +4542,18 @@ pub struct SelectUiRequest {
 	pub options: Vec<String>,
 	#[serde(rename = "optionDetails", default, skip_serializing_if = "Option::is_none")]
 	pub option_details: Option<Vec<SelectOptionDetail>>,
+	/// Index into `options` to focus first.
+	#[serde(rename = "initialIndex", default, skip_serializing_if = "Option::is_none")]
+	pub initial_index: Option<i64>,
+	/// Marker style for the first `markableCount` options.
+	#[serde(rename = "selectionMarker", default, skip_serializing_if = "Option::is_none")]
+	pub selection_marker: Option<SelectUiRequestSelectionMarker>,
+	/// For `checkbox`: indices into `options` currently checked. Authoritative; hosts render it per option.
+	#[serde(rename = "checkedIndices", default, skip_serializing_if = "Option::is_none")]
+	pub checked_indices: Option<Vec<i64>>,
+	/// Leading options that get a marker; trailing ones are actions. Defaults to all options when `selectionMarker` is set.
+	#[serde(rename = "markableCount", default, skip_serializing_if = "Option::is_none")]
+	pub markable_count: Option<i64>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub timeout: Option<i64>,
 }
@@ -6010,6 +6033,24 @@ impl DictationStateEventState {
 			Self::Starting => "starting",
 			Self::Recording => "recording",
 			Self::Transcribing => "transcribing",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SelectUiRequestSelectionMarker {
+	#[serde(rename = "radio")]
+	Radio,
+	#[serde(rename = "checkbox")]
+	Checkbox,
+}
+
+impl SelectUiRequestSelectionMarker {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Radio => "radio",
+			Self::Checkbox => "checkbox",
 		}
 	}
 }

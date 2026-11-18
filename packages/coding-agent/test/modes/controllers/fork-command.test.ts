@@ -57,6 +57,7 @@ function createContext(
 	const session = {
 		isStreaming: options.streaming ?? false,
 		fork: vi.fn(async () => true),
+		abort: vi.fn(async () => undefined),
 		flushToDisk: vi.fn(async () => undefined),
 		sessionFile,
 		sessionId: "parent-session-id",
@@ -69,6 +70,7 @@ function createContext(
 		getHeader: vi.fn(() => undefined),
 		getCwd: vi.fn(() => options.cwd ?? "/workspace/project"),
 		getSessionFile: vi.fn(() => sessionFile),
+		getSessionId: vi.fn(() => "parent-session-id"),
 		isSessionOnDisk: vi.fn(() => sessionFile !== undefined),
 		flush,
 	};
@@ -505,14 +507,14 @@ describe("/fork inside Tern", () => {
 		expect(ctx.present).toHaveBeenCalledTimes(1);
 	});
 
-	it("refuses the in-place fallback mid-turn when Tern declines the fork", async () => {
+	it("aborts the running turn and forks in place when Tern declines the fork", async () => {
 		const tern = await startTern(() => ({ error: { kind: "not_agent", message: "no session file" } }));
 		const { controller, ctx, session, moveTernBlockToTab, focusTernBlock } = createContext({ streaming: true });
 		await controller.handleForkCommand();
 		expect(tern.forks).toHaveLength(1);
-		expect(session.fork).not.toHaveBeenCalled();
-		expect(moveTernBlockToTab).not.toHaveBeenCalled();
-		expect(focusTernBlock).not.toHaveBeenCalled();
-		expect(ctx.showWarning).toHaveBeenCalledTimes(1);
+		expect(session.abort).toHaveBeenCalledTimes(1);
+		expect(session.fork).toHaveBeenCalledTimes(1);
+		expect(session.abort.mock.invocationCallOrder[0]).toBeLessThan(session.fork.mock.invocationCallOrder[0]);
+		expect(ctx.showWarning).not.toHaveBeenCalled();
 	});
 });

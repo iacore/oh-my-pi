@@ -2,7 +2,11 @@ import type { Tokens } from "@oh-my-pi/pi-utils/marked";
 import type { ImageBudget } from "../components/image";
 import { type Markdown, streamingMarkdownSource, type TableLocks } from "../components/markdown";
 import { Spacer } from "../components/spacer";
+import { TERMINAL } from "../terminal-capabilities";
 import { Container } from "../tui";
+import { EmbedFigure } from "./embed-figure";
+import { embedHost } from "./embed-host";
+import { type Embed, type EmbedSegment, hasEmbed, splitEmbeds } from "./embed-source";
 import { splitImageFigures } from "./image-source";
 import { RasterFigure, rasterFigureRendering } from "./raster-figure";
 import { SvgFigure, svgFigureRendering } from "./svg-figure";
@@ -19,6 +23,8 @@ export interface FigureMarkdownOptions {
 	tableLocks?: TableLocks;
 	/** Draw charts under numeric tables; off for transcripts that are not the main session's. */
 	charts: boolean;
+	/** Whether the transcript shows pictures; off, fences and tables stay Markdown and an embed is its one-row note. */
+	showImages: boolean;
 	/** Shared inline-image budget for the figures. */
 	budget?: ImageBudget;
 	/** Rows each figure may fill, read on every render; callers reserve prose, chrome and separators themselves. Unset or `undefined` takes a share of the terminal viewport. */
@@ -27,19 +33,24 @@ export interface FigureMarkdownOptions {
 	onChange: () => void;
 }
 
+type Segment = FigureSegment | EmbedSegment | ChartSegment;
+
 type Part =
 	| { readonly kind: "markdown"; readonly md: Markdown; text: string }
 	| { readonly kind: "svg"; readonly figure: SvgFigure; source: string; closed: boolean }
 	| { readonly kind: "image"; readonly figure: RasterFigure; path: string; alt: string }
+	| { readonly kind: "embed"; readonly figure: EmbedFigure; embed: Embed }
 	| { readonly kind: "chart"; readonly figure: TableChartFigure; table: Tokens.Table };
 
 /**
  * Assistant Markdown whose top-level ```svg fences are lifted out of the prose
  * and drawn as images ({@link SvgFigure}), whose lines naming a local picture
- * file are drawn as that file ({@link RasterFigure}), and whose numeric tables
+ * file are drawn as that file ({@link RasterFigure}), whose `<img>`/`<iframe>`
+ * lines are drawn as pictures ({@link EmbedFigure}), and whose numeric tables
  * get a chart drawn under them ({@link TableChartFigure}), with ordinary
- * {@link Markdown} for the prose between them. Stands in for Markdown on an assistant text
- * block that holds an svg fence or a chartable table: {@link setText} streams
+ * {@link Markdown} for the prose between them. Stands in for Markdown on an
+ * assistant text block that holds an svg fence, a local picture, an embed or a
+ * chartable table: {@link setText} streams
  * in place, reusing every part whose kind is unchanged, and
  * {@link transientRenderCache} marks the block's tail as still streaming — the
  * last prose run renders transient, the last figure throttles its rasters
@@ -145,6 +156,19 @@ export class FigureMarkdown extends Container {
 				const { budget, maxRows, onChange } = this.#options;
 				return { kind: "chart", figure: new TableChartFigure({ budget, maxRows, onChange }), table: segment.table };
 			}
+			if (segment.kind === "embed") {
+				if (old?.kind === "embed") {
+					old.embed = segment.embed;
+					return old;
+				}
+				reshaped = true;
+				const { budget, maxRows, showImages, onChange } = this.#options;
+				return {
+					kind: "embed",
+					figure: new EmbedFigure({ budget, maxRows, showImages, onChange }),
+					embed: segment.embed,
+				};
+			}
 			if (segment.kind === "markdown") {
 				const text = segment.text.trim();
 				if (old?.kind === "markdown") {
@@ -194,23 +218,33 @@ export class FigureMarkdown extends Container {
 	}
 
 	/**
-	 * The block as prose, ```svg fences and local pictures (when those figures
-	 * are on), and charts after complete tables (when charts are on); only the
-	 * last run can still stream.
+	 * The block as prose, ```svg fences (when figures are on), local pictures
+	 * (when those figures are on), embed lines (when embeds are on) and charts
+	 * after complete tables (when charts are on); only the last run can still
+	 * stream. Fences and tables lift only where pictures show; an embed lifts
+	 * anywhere, as its note.
 	 */
-	#segments(): (FigureSegment | ChartSegment)[] {
-		const fences: FigureSegment[] = svgFigureRendering()
-			? splitSvgFences(this.#text)
-			: [{ kind: "markdown", text: this.#text }];
-		const lifted: FigureSegment[] = rasterFigureRendering()
-			? fences.flatMap((segment): FigureSegment[] =>
-					segment.kind === "markdown" ? splitImageFigures(segment.text) : [segment],
-				)
-			: fences;
-		if (!this.#options.charts || !hasChartTable(this.#text)) return lifted;
-		const last = lifted.length - 1;
-		return lifted.flatMap((segment, index): (FigureSegment | ChartSegment)[] =>
-			segment.kind === "markdown" ? splitTableCharts(segment.text, this.#transient && index === last) : [segment],
+	#segments(): Segment[] {
+		const pictures = this.#options.showImages && TERMINAL.imageProtocol !== null;
+		let segments: Segment[] =
+			pictures && svgFigureRendering() ? splitSvgFences(this.#text) : [{ kind: "markdown", text: this.#text }];
+		if (pictures && rasterFigureRendering()) {
+			segments = this.#splitProse(segments, text => splitImageFigures(text));
+		}
+		if (embedHost() && hasEmbed(this.#text)) {
+			segments = this.#splitProse(segments, (text, streaming) => splitEmbeds(text, { streaming }));
+		}
+		if (pictures && this.#options.charts && hasChartTable(this.#text)) {
+			segments = this.#splitProse(segments, splitTableCharts);
+		}
+		return segments;
+	}
+
+	/** Split each prose run of `segments` further; `streaming` marks the run the block's tail is still writing. */
+	#splitProse(segments: Segment[], split: (text: string, streaming: boolean) => Segment[]): Segment[] {
+		const last = segments.length - 1;
+		return segments.flatMap((segment, index) =>
+			segment.kind === "markdown" ? split(segment.text, this.#transient && index === last) : [segment],
 		);
 	}
 
@@ -231,6 +265,7 @@ export class FigureMarkdown extends Container {
 			if (part.kind === "markdown") part.md.transientRenderCache = streaming;
 			else if (part.kind === "svg") part.figure.update(part.source, part.closed || !streaming);
 			else if (part.kind === "image") part.figure.update(part.path, part.alt);
+			else if (part.kind === "embed") part.figure.update(part.embed);
 			else part.figure.update(part.table);
 		});
 	}

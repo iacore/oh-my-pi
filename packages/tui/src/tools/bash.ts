@@ -302,7 +302,11 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, unkno
  * reset SGR state at line boundaries, which made the previous single-string
  * `theme.fg("dim", ...)` form render only the first line as dim.
  */
-export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme, dialect: ShellDialect = BASH_DIALECT): string[] {
+export function formatBashCommandLines(
+	args: BashRenderArgs,
+	uiTheme: Theme,
+	dialect: ShellDialect = BASH_DIALECT,
+): string[] {
 	const command = replaceTabs(sanitizeText(args.command || "…"));
 	const prefix = shellCommandPrefix(args, uiTheme, dialect);
 	const highlightedLines = highlightCode(command, dialect.lang);
@@ -318,11 +322,17 @@ export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme, dia
 }
 
 /** Fish's spelling of the `env` argument: `set -gx NAME "value"`, one per line, dimmed. */
-function formatShellEnvLines(env: Record<string, unknown> | undefined, uiTheme: Theme, dialect: ShellDialect): string[] {
+function formatShellEnvLines(
+	env: Record<string, unknown> | undefined,
+	uiTheme: Theme,
+	dialect: ShellDialect,
+): string[] {
 	if (dialect.env !== "set-gx" || !env) return [];
 	return Object.entries(env)
 		.sort(([a], [b]) => a.localeCompare(b))
-		.map(([key, value]) => uiTheme.fg("dim", `set -gx ${shellVizText(key)} "${escapeBashEnvValueForDisplay(value)}"`));
+		.map(([key, value]) =>
+			uiTheme.fg("dim", `set -gx ${shellVizText(key)} "${escapeBashEnvValueForDisplay(value)}"`),
+		);
 }
 
 /** The dim `$ cd <dir> && NAME="…" ` prefix ahead of a command's first line (trailing space included). */
@@ -682,9 +692,13 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const expanded = renderContext?.expanded ?? options.expanded;
 					const previewLines = renderContext?.previewLines ?? BASH_DEFAULT_PREVIEW_LINES;
 					// A traced command redraws on every folded event; its running
-					// glyphs spin with the frame (only while the run is live).
+					// glyphs spin with the frame (only while the run is live). A result
+					// without a trace yet (a call that returned as a background job before
+					// the first trace poll) keeps the call's untraced presentation.
 					const trace = options.shellTrace ?? details?.trace;
-					const presentation = trace === undefined ? undefined : options.shellPresentation;
+					const presentation = options.shellPresentation;
+					// Without a trace the presentation parsed the raw command, `cd` and all.
+					const scriptDetails = trace === undefined ? undefined : details;
 
 					// Get output from context (preferred) or fall back to result content.
 					// Strip the LLM-facing notice appended by wrappedExecute so we don't
@@ -781,7 +795,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								// render identically; only ctrl+o uncaps.
 								content: capPreviewLines(
 									presentation
-										? visualCommandLines(presentation, renderArgs, details, uiTheme, contentWidth)
+										? visualCommandLines(presentation, renderArgs, scriptDetails, uiTheme, contentWidth)
 										: args
 											? (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme, dialect))
 											: [],
@@ -875,15 +889,21 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					? undefined
 					: (details?.wallTimeMs ?? options.elapsedMs);
 			const meta = details?.meta;
-			// Native hosts render the same engine-produced presentation as the ANSI inspector.
+			// Native hosts render the same engine-produced presentation as the ANSI inspector,
+			// including the untraced one of a result that landed before the first trace poll.
 			const trace = options.shell === true ? (options.shellTrace ?? details?.trace) : undefined;
-			const presentation = options.shell === true && trace ? options.shellPresentation : undefined;
+			const presentation = options.shell === true ? options.shellPresentation : undefined;
 			// The shell node is the command pane only; the run's ordinary output
 			// segment draws what ran: the live result, or the output retained up
-			// to the replay cursor while one is held.
-			const shownOutput = presentation?.preferences.cursor !== undefined ? presentation.output.trimEnd() : output;
+			// to the replay cursor while one is held. An untraced run has nothing to
+			// replay, so a cursor set on it never hides the result.
+			const shownOutput =
+				trace !== undefined && presentation?.preferences.cursor !== undefined
+					? presentation.output.trimEnd()
+					: output;
+			// Without a trace the presentation parsed the raw command, `cd` and all.
 			const displayWorkdir = formatToolWorkingDirectory(
-				executedScriptArgs(renderArgs, details).cwd,
+				executedScriptArgs(renderArgs, trace === undefined ? undefined : details).cwd,
 				getProjectDir(),
 			);
 			const box = runBox(
@@ -947,4 +967,3 @@ export const bashToolRenderer = createShellRenderer<BashRenderArgs>({
 	...shellRendererBody,
 	resolveTitle: args => (args?.name ? `Bash · ${String(args.name)}` : "Bash"),
 });
-

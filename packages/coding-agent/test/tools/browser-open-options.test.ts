@@ -63,7 +63,6 @@ describe("browser open options CDP helpers", () => {
 	it("adds the per-open launch switches when requested", () => {
 		const args = buildHeadlessLaunchArgs({ width: 800, height: 600 }, { insecure: true });
 		expect(args).toContain("--hide-scrollbars");
-		expect(args).toContain("--enable-features=WebMCPTesting,DevToolsWebMCPSupport");
 		expect(args).toContain("--ignore-certificate-errors");
 		expect(args).toContain("--allow-file-access-from-files");
 	});
@@ -567,10 +566,44 @@ await Promise.withResolvers().promise;`;
 			server.stop(true);
 			recycled.stop(true);
 			later.stop(true);
-			await closeLaunchedBrowser(browser);
+			await closeLaunchedBrowser({ browser, userDataDir });
 			if (userDataDir) await removeUserDataDir(userDataDir);
 		}
 	}, 30_000);
+
+	it("reports an open on one line, naming the page only when it is not the requested URL", async () => {
+		const server = Bun.serve({
+			port: 0,
+			fetch(request) {
+				const { pathname } = new URL(request.url);
+				if (pathname === "/moved") return Response.redirect(new URL("/landed", request.url).href, 302);
+				const title = pathname === "/landed" ? "Landed" : "Requested page";
+				return new Response(`<title>${title}</title>`, { headers: { "content-type": "text/html" } });
+			},
+		});
+		try {
+			const invoke = browserHost();
+			const name = `one-line-${crypto.randomUUID()}`;
+
+			const first = await invoke({ action: "open", name, url: server.url.origin });
+			const opened = first.content.map(part => (part.type === "text" ? part.text : "")).join("\n");
+			expect(opened).toMatch(new RegExp(`^Opened tab "${name}" on [^\\n]+, titled "Requested page"$`));
+			expect(opened).not.toContain(", at http");
+
+			const landed = new URL("/landed", server.url).href;
+			const second = await invoke({ action: "open", name, url: new URL("/moved", server.url).href });
+			const reused = second.content.map(part => (part.type === "text" ? part.text : "")).join("\n");
+			expect(reused).toBe(reused.split("\n")[0]);
+			expect(reused).toStartWith(`Reused tab "${name}" on `);
+			expect(reused).toEndWith(`, at ${landed}, titled "Landed"`);
+
+			const adopted = await invoke({ action: "open", name });
+			const withoutUrl = adopted.content.map(part => (part.type === "text" ? part.text : "")).join("\n");
+			expect(withoutUrl).toEndWith(`, at ${landed}, titled "Landed"`);
+		} finally {
+			server.stop(true);
+		}
+	});
 
 	it("closes the tab its open created when the navigation fails outright, but keeps a reused one", async () => {
 		const refused = Bun.serve({ port: 0, fetch: () => new Response("") });
@@ -623,7 +656,9 @@ await Promise.withResolvers().promise;`;
 			// Opens of one name run in order, so this one starts after the
 			// cancelled open finished unwinding, and finds no tab to reuse.
 			const reopened = await invoke({ action: "open", name });
-			expect(reopened.content).toEqual([expect.objectContaining({ text: expect.stringMatching(/^Opened tab /) })]);
+			expect(reopened.content).toEqual([
+				expect.objectContaining({ text: expect.stringMatching(/^Opened tab [^\n]+, at about:blank$/) }),
+			]);
 			expect(getTab(name)).not.toBe(cancelled);
 		} finally {
 			server.stop(true);

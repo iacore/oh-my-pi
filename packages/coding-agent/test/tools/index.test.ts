@@ -54,7 +54,6 @@ describe("createTools", () => {
 
 		// Core tools should always be present
 		expect(names).toContain("eval");
-		expect(names).toContain("bash");
 		expect(names).toContain("read");
 		expect(names).toContain("edit");
 		expect(names).toContain("write");
@@ -64,6 +63,8 @@ describe("createTools", () => {
 		expect(names).toContain("task");
 		expect(names).toContain("todo");
 		expect(names).toContain("web_search");
+		// `bash.enabled` is off by default on this branch; an explicit request still grants it.
+		expect(names).not.toContain("bash");
 		expect(names).not.toContain("fetch");
 		expect(names).not.toContain("vim");
 	});
@@ -90,7 +91,6 @@ describe("createTools", () => {
 		const tools = await createTools(session);
 		const names = tools.map(t => t.name);
 
-		expect(names).toContain("bash");
 		expect(names).toContain("eval");
 	});
 
@@ -253,9 +253,9 @@ describe("createTools", () => {
 		expect(names).not.toContain("browser");
 
 		const requestedTools = await createTools(createTestSession({ settings: session.settings }), ["bash", "read"]);
-		// `write` joins as the device-only xd:// transport: read was granted,
-		// write omitted (see the "device-only xd:// transport write" test).
-		expect(requestedTools.map(t => t.name)).toEqual(["read", "write"]);
+		// An explicit request grants `bash` even while its setting is off; `write` joins as the
+		// device-only xd:// transport (see the "device-only xd:// transport write" test).
+		expect(requestedTools.map(t => t.name)).toEqual(["bash", "read", "write"]);
 	});
 
 	it("auto-includes goal when goal mode is active", async () => {

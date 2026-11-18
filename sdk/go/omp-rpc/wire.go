@@ -2555,7 +2555,7 @@ type SessionState struct {
 	TokensPerSecond    *float64         `json:"tokensPerSecond"`
 	MessageCount       int64            `json:"messageCount"`
 	QueuedMessageCount int64            `json:"queuedMessageCount"`
-	// Background jobs or deliveries can still inject a follow-up and wake the session.
+	// Background jobs, their deliveries, child agents or queued peer messages can still wake the session.
 	HasPendingAsyncWork bool `json:"hasPendingAsyncWork"`
 	// Idle with nothing queued or pending; same predicate as `session_settled`.
 	IsSettled      bool                `json:"isSettled"`
@@ -2642,6 +2642,8 @@ type BashResult struct {
 	Images        []ImageContent             `json:"images,omitempty"`
 	// The embedded shell's final `ShellTrace` of the run; only when the caller asked for one.
 	Trace map[string]json.RawMessage `json:"trace,omitempty"`
+	// Set when the command overlapped another one on the session's persistent shell and ran in a fork of it.
+	Fork *ShellForkOutcome `json:"fork,omitempty"`
 }
 
 func (v *BashResult) UnmarshalJSON(data []byte) error {
@@ -2673,6 +2675,30 @@ func (v *BashResult) decodeFrom(raw map[string]json.RawMessage) error {
 	d.optional("workingDir", &out.WorkingDir)
 	d.optional("images", &out.Images)
 	d.optional("trace", &out.Trace)
+	d.optional("fork", &out.Fork)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ShellForkOutcome struct {
+	// What the command set carried back into the session's shell; `false`: it stayed in the fork.
+	Carried bool `json:"carried"`
+	// It left background jobs running in the fork, where later commands' `jobs`, `wait` and `%N` miss them.
+	Jobs bool `json:"jobs"`
+}
+
+func (v *ShellForkOutcome) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ShellForkOutcome", v.decodeFrom)
+}
+
+func (v *ShellForkOutcome) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ShellForkOutcome
+	d := fieldDecoder{raw: raw, owner: "ShellForkOutcome"}
+	d.required("carried", &out.Carried)
+	d.required("jobs", &out.Jobs)
 	if d.err != nil {
 		return d.err
 	}
@@ -5670,7 +5696,15 @@ type SelectUiRequest struct {
 	Title         string               `json:"title"`
 	Options       []string             `json:"options"`
 	OptionDetails []SelectOptionDetail `json:"optionDetails,omitempty"`
-	Timeout       *int64               `json:"timeout,omitempty"`
+	// Index into `options` to focus first.
+	InitialIndex *int64 `json:"initialIndex,omitempty"`
+	// Marker style for the first `markableCount` options.
+	SelectionMarker *SelectUiRequestSelectionMarker `json:"selectionMarker,omitempty"`
+	// For `checkbox`: indices into `options` currently checked. Authoritative; hosts render it per option.
+	CheckedIndices []int64 `json:"checkedIndices,omitempty"`
+	// Leading options that get a marker; trailing ones are actions. Defaults to all options when `selectionMarker` is set.
+	MarkableCount *int64 `json:"markableCount,omitempty"`
+	Timeout       *int64 `json:"timeout,omitempty"`
 }
 
 func (v *SelectUiRequest) UnmarshalJSON(data []byte) error {
@@ -5686,6 +5720,10 @@ func (v *SelectUiRequest) decodeFrom(raw map[string]json.RawMessage) error {
 	d.required("title", &out.Title)
 	d.required("options", &out.Options)
 	d.optional("optionDetails", &out.OptionDetails)
+	d.optional("initialIndex", &out.InitialIndex)
+	d.optional("selectionMarker", &out.SelectionMarker)
+	d.optional("checkedIndices", &out.CheckedIndices)
+	d.optional("markableCount", &out.MarkableCount)
 	d.optional("timeout", &out.Timeout)
 	if d.err != nil {
 		return d.err
@@ -5697,6 +5735,26 @@ func (v *SelectUiRequest) decodeFrom(raw map[string]json.RawMessage) error {
 func (v SelectUiRequest) MarshalJSON() ([]byte, error) {
 	type plain SelectUiRequest
 	return encodeObject(plain(v), `"type":"extension_ui_request","method":"select"`, nil)
+}
+
+type SelectUiRequestSelectionMarker string
+
+const (
+	SelectUiRequestSelectionMarkerRadio    SelectUiRequestSelectionMarker = "radio"
+	SelectUiRequestSelectionMarkerCheckbox SelectUiRequestSelectionMarker = "checkbox"
+)
+
+func (v *SelectUiRequestSelectionMarker) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SelectUiRequestSelectionMarker")
+	if err != nil {
+		return err
+	}
+	switch value := SelectUiRequestSelectionMarker(s); value {
+	case SelectUiRequestSelectionMarkerRadio, SelectUiRequestSelectionMarkerCheckbox:
+		*v = value
+		return nil
+	}
+	return unknownValue("SelectUiRequestSelectionMarker", s)
 }
 
 type ConfirmUiRequest struct {
