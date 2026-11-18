@@ -123,7 +123,7 @@ export const cfgFishEnabled = register({
 		tab: "shell",
 		group: "Fish",
 		label: "Fish",
-		description: "Enable the fish tool: the shell tool running every command through fish",
+		description: "Enable the fish tool: shell commands are parsed by fish, not the embedded bash engine",
 	},
 });
 

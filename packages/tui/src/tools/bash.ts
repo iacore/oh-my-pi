@@ -27,7 +27,13 @@ import type {
 	RenderResultOptions,
 	ToolRenderer,
 } from "./renderer";
-import { INTENT_FIELD, type ShellTrace, type ShellVizPresentation, type TspTone } from "@oh-my-pi/pi-wire";
+import {
+	INTENT_FIELD,
+	type ShellTrace,
+	type ShellVizPresentation,
+	type TspProps,
+	type TspTone,
+} from "@oh-my-pi/pi-wire";
 import type { SpotlightDetails } from "../chat/spotlight";
 import { plainText } from "../native/spans";
 import {
@@ -265,6 +271,8 @@ export interface BashRenderContext {
 /** Caller-supplied shell labels and argument projections. */
 export interface ShellRendererConfig<TArgs> {
 	resolveTitle: (args: TArgs | undefined, options: RenderResultOptions) => string;
+	/** The shell this renderer draws; bash when omitted. */
+	dialect?: ShellDialect;
 	resolveCommand?: (args: TArgs | undefined) => string | undefined;
 	resolveCwd?: (args: TArgs | undefined) => string | undefined;
 	resolveEnv?: (args: TArgs | undefined) => Record<string, unknown> | undefined;
@@ -294,19 +302,34 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, unkno
  * reset SGR state at line boundaries, which made the previous single-string
  * `theme.fg("dim", ...)` form render only the first line as dim.
  */
-export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
+export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme, dialect: ShellDialect = BASH_DIALECT): string[] {
 	const command = replaceTabs(sanitizeText(args.command || "…"));
-	const prefix = bashCommandPrefix(args, uiTheme);
-	const highlightedLines = highlightCode(command, "bash");
-	if (highlightedLines.length === 0) return [prefix.trimEnd()];
-	return highlightedLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
+	const prefix = shellCommandPrefix(args, uiTheme, dialect);
+	const highlightedLines = highlightCode(command, dialect.lang);
+	const lines =
+		highlightedLines.length === 0
+			? [prefix.trimEnd()]
+			: highlightedLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
+	if (dialect.env === "inline") return lines;
+	// Fish sets variables as shell variables, so its `env` reads as `set -gx` lines
+	// above the command rather than as a bash-style assignment prefix.
+	const envLines = formatShellEnvLines(getBashEnvForDisplay(args), uiTheme, dialect);
+	return [...envLines, ...lines];
+}
+
+/** Fish's spelling of the `env` argument: `set -gx NAME "value"`, one per line, dimmed. */
+function formatShellEnvLines(env: Record<string, unknown> | undefined, uiTheme: Theme, dialect: ShellDialect): string[] {
+	if (dialect.env !== "set-gx" || !env) return [];
+	return Object.entries(env)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([key, value]) => uiTheme.fg("dim", `set -gx ${shellVizText(key)} "${escapeBashEnvValueForDisplay(value)}"`));
 }
 
 /** The dim `$ cd <dir> && NAME="…" ` prefix ahead of a command's first line (trailing space included). */
-export function bashCommandPrefix(args: BashRenderArgs, uiTheme: Theme): string {
+export function shellCommandPrefix(args: BashRenderArgs, uiTheme: Theme, dialect: ShellDialect = BASH_DIALECT): string {
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, getProjectDir());
-	const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
-	const prefixParts = ["$"];
+	const envAssignments = dialect.env === "inline" ? formatBashEnvAssignments(getBashEnvForDisplay(args)) : "";
+	const prefixParts = [dialect.prompt];
 	if (displayWorkdir) prefixParts.push(cdPrefix(displayWorkdir, args.cdSeparator));
 	if (envAssignments) prefixParts.push(envAssignments);
 	return uiTheme.fg("dim", `${prefixParts.join(" ")} `);
@@ -316,12 +339,19 @@ export function bashCommandPrefix(args: BashRenderArgs, uiTheme: Theme): string 
  * Plain (unstyled) command line for native views: `cd <dir> && NAME="…" <command>`,
  * built from the same decoded display args (incl. streamed `__partialJson` env) as the ANSI path.
  */
-export function formatBashCommandText(args: BashRenderArgs): string {
+export function formatBashCommandText(args: BashRenderArgs, dialect: ShellDialect = BASH_DIALECT): string {
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, getProjectDir());
-	const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
 	const parts: string[] = [];
 	if (displayWorkdir) parts.push(cdPrefix(displayWorkdir, args.cdSeparator));
-	if (envAssignments) parts.push(envAssignments);
+	if (dialect.env === "set-gx") {
+		const env = getBashEnvForDisplay(args) ?? {};
+		for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
+			parts.push(`set -gx ${shellVizText(key)} "${escapeBashEnvValueForDisplay(value)}";`);
+		}
+	} else {
+		const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
+		if (envAssignments) parts.push(envAssignments);
+	}
 	parts.push(replaceTabs(sanitizeText(args.command || "…")));
 	return parts.join(" ");
 }
@@ -447,8 +477,38 @@ function shellFootParts(details: BashToolDetails | undefined, artifactId: string
 	return parts;
 }
 
-/** The command line as a run's input: wrapped shell source. */
-const SHELL_INPUT = { role: "omp.tool.bash.command", lang: "bash", wrap: true } as const;
+/**
+ * The shell a card speaks. The card, arrows and footer are shared; the prompt
+ * glyph, highlight grammar, node roles and the way the `env` argument reads are
+ * the shell's own — `NAME="v" cmd` is bash, `set -gx NAME "v"` is fish.
+ */
+/** Highlight language the wire accepts for a shell card. */
+export type ShellLang = NonNullable<TspProps<"shell">["lang"]>;
+
+export interface ShellDialect {
+	/** Prompt glyph drawn before the command. */
+	readonly prompt: string;
+	/** Highlight language for the command line. */
+	readonly lang: ShellLang;
+	/** Role of the command node. */
+	readonly commandRole: "omp.tool.bash.command" | "omp.tool.fish.command";
+	/** Role of the output node. */
+	readonly outputRole: "omp.tool.bash.output" | "omp.tool.fish.output";
+	/** `inline` writes `NAME="v"` before the command; `set-gx` writes `set -gx` lines. */
+	readonly env: "inline" | "set-gx";
+}
+
+export const BASH_DIALECT: ShellDialect = {
+	prompt: "$",
+	lang: "bash",
+	commandRole: "omp.tool.bash.command",
+	outputRole: "omp.tool.bash.output",
+	env: "inline",
+};
+
+function shellInput(dialect: ShellDialect) {
+	return { role: dialect.commandRole, lang: dialect.lang, wrap: true } as const;
+}
 
 /** Box tint per run state: failed runs read as errors, timed-out ones as warnings. */
 const RUN_BOX_TONE: Partial<Record<RunState, TspTone>> = { failed: "error", "timed-out": "warning" };
@@ -486,7 +546,7 @@ function visualCommandLines(
 	width: number,
 ): string[] {
 	const scriptArgs = executedScriptArgs(args, details);
-	const prefix = bashCommandPrefix(scriptArgs, uiTheme);
+	const prefix = shellCommandPrefix(scriptArgs, uiTheme);
 	const hasContext =
 		!!formatToolWorkingDirectory(scriptArgs.cwd, getProjectDir()) ||
 		!!formatBashEnvAssignments(getBashEnvForDisplay(scriptArgs));
@@ -503,6 +563,7 @@ function executedScriptArgs(args: BashRenderArgs, details: BashToolDetails | und
 
 /** Builds a shell transcript renderer with caller-supplied command labels. */
 export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
+	const dialect = config.dialect ?? BASH_DIALECT;
 	return {
 		renderCall(args: TArgs, options: RenderResultOptions, uiTheme: Theme): Component {
 			const renderArgs = toBashRenderArgs(args, config);
@@ -519,7 +580,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const presentation = options.shellPresentation;
 					const commandLines = presentation
 						? visualCommandLines(presentation, renderArgs, undefined, uiTheme, contentWidth)
-						: (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme));
+						: (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme, dialect));
 					const header =
 						config.showHeader === false
 							? undefined
@@ -722,7 +783,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 									presentation
 										? visualCommandLines(presentation, renderArgs, details, uiTheme, contentWidth)
 										: args
-											? (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme))
+											? (cmdLines ??= formatBashCommandLines(renderArgs, uiTheme, dialect))
 											: [],
 									uiTheme,
 									{ expanded },
@@ -748,7 +809,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			);
 		},
 		describeCall(args: TArgs, options: RenderResultOptions): NativeToolView {
-			const command = formatBashCommandText(toBashRenderArgs(args, config));
+			const command = formatBashCommandText(toBashRenderArgs(args, config), dialect);
 			// No foot until the command starts; once it runs (before any output) the clock shows.
 			const started = options.executionStarted === true;
 			return {
@@ -760,9 +821,9 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								? node(
 										"shell",
 										{
-											role: SHELL_INPUT.role,
+											role: shellInput(dialect).role,
 											presentation: options.shellPresentation,
-											lang: "bash",
+											lang: dialect.lang,
 											replayEpoch: options.shellReplayEpoch,
 											liveOrigin: options.executionStarted,
 											stream: options.argsComplete !== true && options.cancelled !== true,
@@ -771,7 +832,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 										undefined,
 										"input",
 									)
-								: runInput(command, SHELL_INPUT),
+								: runInput(command, shellInput(dialect)),
 							started &&
 								runFoot({ state: options.cancelled ? "cancelled" : "running", elapsedMs: options.elapsedMs }),
 						],
@@ -831,19 +892,19 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						? node(
 								"shell",
 								{
-									role: SHELL_INPUT.role,
+									role: shellInput(dialect).role,
 									presentation,
 									replayEpoch: options.shellReplayEpoch,
 									liveOrigin: options.executionStarted,
 									...(displayWorkdir ? { cwd: displayWorkdir } : {}),
-									lang: "bash",
+									lang: dialect.lang,
 									preview: { lines: RUN_INPUT_PREVIEW_LINES },
 								},
 								undefined,
 								"input",
 							)
-						: runInput(command, SHELL_INPUT),
-					shownOutput.trim().length > 0 && runOutput(shownOutput, { role: "omp.tool.bash.output", previewLines }),
+						: runInput(command, shellInput(dialect)),
+					shownOutput.trim().length > 0 && runOutput(shownOutput, { role: dialect.outputRole, previewLines }),
 					runFoot({
 						state,
 						exitCode: details?.exitCode,
@@ -887,8 +948,3 @@ export const bashToolRenderer = createShellRenderer<BashRenderArgs>({
 	resolveTitle: args => (args?.name ? `Bash · ${String(args.name)}` : "Bash"),
 });
 
-/** Renders the fish dialect of the shell tool: same body, its own verb. */
-export const fishToolRenderer = createShellRenderer<BashRenderArgs>({
-	...shellRendererBody,
-	resolveTitle: args => (args?.name ? `Fish · ${String(args.name)}` : "Fish"),
-});

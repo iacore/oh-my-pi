@@ -3,7 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { RenderResultOptions } from "../src/tools/renderer";
 import { getThemeByName, setThemeInstance, type Theme } from "@oh-my-pi/pi-tui/theme";
-import { bashToolRenderer, fishToolRenderer, formatBackgroundNotice } from "@oh-my-pi/pi-tui/tools/bash";
+import { bashToolRenderer, formatBackgroundNotice } from "@oh-my-pi/pi-tui/tools/bash";
+import { fishToolRenderer } from "@oh-my-pi/pi-tui/tools/fish";
 import { previewWindowRows } from "@oh-my-pi/pi-tui/render/render-utils";
 import { ImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
@@ -496,6 +497,13 @@ describe("bashToolRenderer", () => {
 
 describe("fishToolRenderer", () => {
 	const result = { content: [{ type: "text", text: "ok" }], details: { exitCode: 0 } };
+	let theme: Theme;
+
+	beforeAll(async () => {
+		const loaded = await getThemeByName("dark");
+		if (!loaded) throw new Error("Expected dark theme");
+		theme = loaded;
+	});
 
 	it("draws the fish dialect as Fish, never Bash", () => {
 		const view = fishToolRenderer.describeResult(result, { expanded: false, isPartial: false }, { command: "ls" });
@@ -511,5 +519,24 @@ describe("fishToolRenderer", () => {
 			{ command: "ls", name: "build" },
 		);
 		expect(JSON.stringify(view.tool?.title)).toContain("Fish · build");
+	});
+
+	it("renders the env argument as fish sets it, above the command", () => {
+		const component = fishToolRenderer.renderCall(
+			{ command: "echo $A", env: { A: "b c" } },
+			{ expanded: false, isPartial: false },
+			theme,
+		);
+		const rendered = sanitizeText(component.render(120).join("\n"));
+		expect(rendered).toContain('set -gx A "b c"');
+		expect(rendered).toContain("❯");
+		expect(rendered).not.toContain('A="b c" echo');
+	});
+
+	it("uses fish node roles, not bash's", () => {
+		const view = fishToolRenderer.describeCall({ command: "ls" }, { expanded: false, isPartial: false });
+		const json = JSON.stringify(view.body);
+		expect(json).toContain("omp.tool.fish.command");
+		expect(json).not.toContain("omp.tool.bash");
 	});
 });

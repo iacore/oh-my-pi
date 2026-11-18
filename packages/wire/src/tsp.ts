@@ -983,7 +983,7 @@ export interface TspShellProps {
 	stream?: boolean;
 	/** Working directory shown ahead of the script when it differs from the project's. */
 	cwd?: string;
-	lang?: "bash" | "zsh";
+	lang?: "bash" | "zsh" | "fish";
 	/**
 	 * Clamp the command to `lines` drawn lines under an Expand button, the window following the write head
 	 * (`stream`), then the playhead, with the enclosing scope heads pinned; gives way inside an open

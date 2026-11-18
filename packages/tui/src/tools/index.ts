@@ -6,7 +6,8 @@
 import { askToolRenderer } from "./ask";
 import { astEditToolRenderer } from "./ast-edit";
 import { astGrepToolRenderer } from "./ast-grep";
-import { bashToolRenderer, fishToolRenderer } from "./bash";
+import { bashToolRenderer } from "./bash";
+import { fishToolRenderer } from "./fish";
 import { debugToolRenderer } from "./debug";
 import { editToolRenderer } from "./edit";
 import { evalToolRenderer } from "./eval";

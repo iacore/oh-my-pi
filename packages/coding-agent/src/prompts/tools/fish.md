@@ -1,21 +1,29 @@
-Fish shell: every call runs as `fish -c '<command>'` in `{{shellPath}}`, a fresh non-interactive fish (no prompt, no job control) that sources the user's own fish config — `config.fish`, `conf.d/` and autoloaded `functions/` — so their functions, aliases and PATH are in scope: call a configured function by name instead of re-implementing it in the command line. Nothing carries over between calls: set variables again, and move directories with the `cwd` field instead of `cd`.
-One fact command/pipeline; dependencies use `&&`.
-{{#if hasEval}}Scripts/heredocs/`$(...)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(...)`/complex flow → dedicated tool or checked-in script.{{/if}}
-Fish syntax, never bash: exit status is `$status` (never `$?`), assignment is `set -gx VAR value` (never `VAR=value cmd`), command substitution is `(cmd)` (never `$(cmd)`), conditionals are `test …` with `and`/`or` (never `[[ ]]`), and a loop body is `for x in …; …; end`.
-`cwd`, not `cd`; `pty` only interactive. `doas`/`sudo` get the terminal for their password prompt on their own — `pty` is not needed for them, the user answers the prompt there, and the password is never passed in the command.
-Internal URIs work as paths for builtins/coreutils, redirects, globs.
-Don't trunc output by habit, result will be summarized and saved as an artifact.
+Fish shell: every call runs as `fish -c '<command>'` in `{{shellPath}}`, a fresh non-interactive fish (no prompt or job control) that reads the user's fish configuration — `config.fish`, `conf.d/`, and autoloaded `functions/` — so their functions, aliases, and PATH are in scope. Call configured functions by name instead of re-implementing them. Nothing carries over between calls: set variables again and change directory with the `cwd` field, not `cd`.
+One command/pipeline per call; join dependencies with `&&` (or `and`). Fish supports `&&`, `||`, `and`, `or`, and `not`.
+{{#if hasEval}}Use `eval` for scripts, heredocs, or complex pipelines. Fish has no heredocs; write text with `printf '%s\n' … | cmd`.{{else}}Use a dedicated tool or checked-in script for scripts, heredocs, or complex flow. Fish has no heredocs; write text with `printf '%s\n' … | cmd`.{{/if}}
+Fish syntax, never bash's:
+- Exit status: `$status`; per-stage pipeline codes: `$pipestatus`; arguments: `$argv`. `$?` does not exist.
+- Set variables with `set`: `set -l name value` is local, `-g` global, `-x` exported. `VAR=value cmd` works as a per-call override, but prefer the `env` field. `set -e name` *erases* the variable — it is not bash's `set -e`.
+- Command substitution is `(cmd)` or `$(cmd)`; backticks are unsupported. It splits only on newlines, not `$IFS`; use `string split` for further splitting or `string collect` to keep the value whole.
+- Variables undergo no word splitting: `$var` stays one value however many spaces it holds, so double quotes group text rather than prevent splitting. `''` expands nothing, `""` expands variables; escapes such as `\n` apply only when unquoted; there is no `$'…'`.
+- Test with `test …` (`if test -f $p; …; end`), never `[[ ]]`. Use `for x in a b c; …; end`, `while`, `switch`, and `begin; …; end` to group.
+- `( … )` is command substitution, never a subshell; group commands with `begin`/`end`.
+- Use the `string` builtin for string work (`string match`, `string replace`, `string sub`) and `math` for arithmetic; bash's `${x%y}`, `${x#y}`, `$((…))` have no equivalent.
+- Globs expand in arguments; `**` recurses and `{a,b}` lists alternatives.
+
+Use `cwd`, not `cd`; use `pty` only for interactive calls. `doas`/`sudo` handle their password prompts on the terminal without `pty`; the user answers there, and the command never contains the password.
+Builtins/coreutils, redirects, and globs accept internal URIs as paths.
+Don't truncate output by habit; the result is summarized and saved as an artifact.
 {{#if hasLaunch}}
 Long-lived services:
-
-- unique name; ready requires name; no async/timeout; pty defaults true.
-- ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.
-  {{/if}}
-  {{#if asyncEnabled}}
-  `async` defers finite results but keeps the deadline (default {{defaultTimeoutSec}}s); `timeout: 0` for watchers and long jobs.
-  {{/if}}
-  {{#if autoBackgroundEnabled}}
-  Non-`pty` calls still running after {{autoBackgroundSeconds}}s (or 1s before `timeout`, if sooner) usually move to background job `bg_N` and keep running to `timeout`.
-  No backgrounding when the client terminal runs the command or the job cap is reached.
-  The result arrives automatically as a follow-up message. NEVER poll.
-  {{/if}}
+- Use a unique name; ready requires name; no async/timeout; pty defaults to true.
+- ready needs a log regex or port (both if given); host defaults to 127.0.0.1 and ready.timeout to 30s.
+{{/if}}
+{{#if asyncEnabled}}
+`async` defers finite results but preserves the deadline (default {{defaultTimeoutSec}}s); use `timeout: 0` for watchers and long jobs.
+{{/if}}
+{{#if autoBackgroundEnabled}}
+Non-`pty` calls still running after {{autoBackgroundSeconds}}s (or 1s before `timeout`, if sooner) usually move to background job `bg_N` and run until `timeout`.
+No backgrounding when the client terminal runs the command or the job cap is reached.
+The result arrives automatically as a follow-up message. NEVER poll.
+{{/if}}
