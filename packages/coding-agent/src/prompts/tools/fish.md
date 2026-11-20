@@ -11,6 +11,14 @@ Fish syntax, never bash's:
 - Use the `string` builtin for string work (`string match`, `string replace`, `string sub`) and `math` for arithmetic; bash's `${x%y}`, `${x#y}`, `$((…))` have no equivalent.
 - Globs expand in arguments; `**` recurses and `{a,b}` lists alternatives.
 
+File work stays out of command strings: `grep`, `cat`, `head`, `tail`, `less` and `more` belong to the dedicated search and read tools, which honour `.gitignore`, return whole files or exact line ranges, and answer in one call. Where a command string must search anyway (a remote host over `ssh`, or a pipeline no tool expresses), use `rg`, never `grep`.
+
+Chain commands with `;` or `&&` only for pure execution (builds, tests, version control, package managers); reads, searches, listings and edits are parallel tool calls, not steps in one shell string.
+
+Run builds, tests and checks directly in a call: output is captured, truncated inline and spilled whole to an artifact, so no `> log` redirect, no `head`/`tail` and no `2>&1 | grep`.
+
+A command string handed to another machine is parsed by that machine's shell: an `ssh` far side may be fish, where `$?` is not the exit status and the step never starts (exit 127). Put the step in a script file and run it with an explicit interpreter.
+
 Use `cwd`, not `cd`; use `pty` only for interactive calls. `doas`/`sudo` handle their password prompts on the terminal without `pty`; the user answers there, and the command never contains the password.
 Builtins/coreutils, redirects, and globs accept internal URIs as paths.
 Don't truncate output by habit; the result is summarized and saved as an artifact.
