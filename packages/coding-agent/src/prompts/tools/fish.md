@@ -4,7 +4,7 @@ One command/pipeline per call; join dependencies with `&&` (or `and`). Fish supp
 Fish syntax, never bash's:
 - Exit status: `$status`; per-stage pipeline codes: `$pipestatus`; arguments: `$argv`. `$?` does not exist.
 - Set variables with `set`: `set -l name value` is local, `-g` global, `-x` exported. `VAR=value cmd` works as a per-call override, but prefer the `env` field. `set -e name` *erases* the variable — it is not bash's `set -e`.
-- Command substitution is `(cmd)` or `$(cmd)`; backticks are unsupported. It splits only on newlines, not `$IFS`; use `string split` for further splitting or `string collect` to keep the value whole.
+- Command substitution is `(cmd)` or `$(cmd)`; backticks are ordinary characters, not substitution. A backslash before one is kept even in double quotes, so never escape a backtick when quoting text: the backslash lands in the value (a `gh --body` payload reaches the API with literal backslashes). It splits only on newlines, not `$IFS`; use `string split` for further splitting or `string collect` to keep the value whole.
 - Variables undergo no word splitting: `$var` stays one value however many spaces it holds, so double quotes group text rather than prevent splitting. `''` expands nothing, `""` expands variables; escapes such as `\n` apply only when unquoted; there is no `$'…'`.
 - Test with `test …` (`if test -f $p; …; end`), never `[[ ]]`. Use `for x in a b c; …; end`, `while`, `switch`, and `begin; …; end` to group.
 - `( … )` is command substitution, never a subshell; group commands with `begin`/`end`.
