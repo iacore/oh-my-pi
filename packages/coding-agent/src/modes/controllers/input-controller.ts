@@ -1659,7 +1659,7 @@ export class InputController {
 		const invocation = parseFileSlashInvocation(text);
 		if (!invocation || !this.ctx.fileSlashCommands.has(invocation.name)) return false;
 		const session = this.ctx.session;
-		if (session.extensionRunner?.getCommand(invocation.name) !== undefined) return false;
+		if (session.extensionRunner?.getCommandForArgs(invocation.name, invocation.args) !== undefined) return false;
 		if (session.customCommands.some(loaded => loaded.command.name === invocation.name)) return false;
 		if (isKnownSkillCommand(this.ctx, text)) return false;
 		const command = session.slashCommands.find(cmd => cmd.name === invocation.name);
@@ -1715,13 +1715,11 @@ export class InputController {
 
 	/** Whether `text` invokes a registered extension command, which runs locally instead of prompting the model. */
 	#isLocalExtensionCommand(text: string): boolean {
+		if (!text.startsWith("/")) return false;
 		const extensionCommandSpace = text.indexOf(" ");
-		return (
-			text.startsWith("/") &&
-			this.ctx.session.extensionRunner?.getCommand(
-				extensionCommandSpace === -1 ? text.slice(1) : text.slice(1, extensionCommandSpace),
-			) !== undefined
-		);
+		const name = extensionCommandSpace === -1 ? text.slice(1) : text.slice(1, extensionCommandSpace);
+		const args = extensionCommandSpace === -1 ? "" : text.slice(extensionCommandSpace + 1);
+		return this.ctx.session.extensionRunner?.getCommandForArgs(name, args) !== undefined;
 	}
 
 	/** Submit editor text to the focused subagent session (chat and continue shortcuts only). */

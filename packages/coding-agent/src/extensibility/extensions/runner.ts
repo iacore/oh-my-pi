@@ -1759,6 +1759,19 @@ export class ExtensionRunner {
 	}
 
 	/**
+	 * Resolve the command an invocation names, honouring {@link RegisteredCommand.allowArgs}:
+	 * a command registered with `allowArgs: false` matches only its bare form, so an
+	 * invocation that carries arguments is answered as undefined and stays a prompt.
+	 */
+	getCommandForArgs(name: string, args: string): RegisteredCommand | undefined {
+		const command = this.getCommand(name);
+		if (command?.allowArgs === false && args.trim() !== "") {
+			return undefined;
+		}
+		return command;
+	}
+
+	/**
 	 * Run an extension-owned callback within this session's settings scope, so a
 	 * synchronous `SettingsManager.create(ctx.cwd)` inside it resolves THIS
 	 * session's manager rather than a same-cwd sibling's. Event handlers get this

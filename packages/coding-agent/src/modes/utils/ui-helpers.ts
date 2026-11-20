@@ -1479,8 +1479,9 @@ export class UiHelpers {
 		const spaceIndex = text.indexOf(" ");
 		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
 		if (!commandName) return false;
+		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
 
-		if (this.ctx.session.extensionRunner?.getCommand(commandName)) {
+		if (this.ctx.session.extensionRunner?.getCommandForArgs(commandName, args)) {
 			return true;
 		}
 

@@ -10148,7 +10148,7 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
 		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
 
-		const command = this.#extensionRunner.getCommand(commandName);
+		const command = this.#extensionRunner.getCommandForArgs(commandName, args);
 		if (!command) return undefined;
 		onRouted?.();
 
@@ -11050,7 +11050,8 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 
 		const spaceIndex = text.indexOf(" ");
 		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-		const command = this.#extensionRunner.getCommand(commandName);
+		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
+		const command = this.#extensionRunner.getCommandForArgs(commandName, args);
 
 		if (command) {
 			throw new Error(

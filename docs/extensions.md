@@ -507,6 +507,23 @@ Command handlers additionally get:
 
 Use command context for session-control flows; these methods are intentionally separated from general event handlers.
 
+`registerCommand` options: `description`, `getArgumentCompletions`, and `allowArgs`. An
+invocation carrying arguments runs the handler by default (`/name args` arrives as `args`).
+`allowArgs: false` makes the command bare-only: `/name` runs it while `/name anything` is
+submitted to the model as an ordinary prompt, so a no-argument command never swallows text
+the user meant to send. The same rule gates the TUI's local-command routing, queueing and
+side-command precedence.
+
+```ts
+pi.registerCommand("kitty", {
+	description: "Open a new terminal window",
+	allowArgs: false,
+	handler: async (_args, _ctx) => {
+		/* … */
+	},
+});
+```
+
 ## Event surface (current names and behavior)
 
 Canonical event unions and payload types are in `types.ts`.

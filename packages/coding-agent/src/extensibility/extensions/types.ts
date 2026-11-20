@@ -1822,6 +1822,13 @@ export type {
 export interface RegisteredCommand {
 	name: string;
 	description?: string;
+	/**
+	 * Whether an invocation carrying arguments still runs the handler. Defaults to true,
+	 * so `/name anything` is a command. Set false for a command with no arguments: `/name`
+	 * runs it, while `/name anything` is submitted to the model as an ordinary prompt
+	 * instead of the handler being called with arguments it ignores.
+	 */
+	allowArgs?: boolean;
 	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null;
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
@@ -2035,6 +2042,7 @@ export interface ExtensionAPI {
 		name: string,
 		options: {
 			description?: string;
+			allowArgs?: RegisteredCommand["allowArgs"];
 			getArgumentCompletions?: RegisteredCommand["getArgumentCompletions"];
 			handler: RegisteredCommand["handler"];
 		},
