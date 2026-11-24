@@ -788,7 +788,8 @@ describe("TanCommandController", () => {
 		await run({ jobId: "job-123", signal: new AbortController().signal, reportProgress: async () => {} });
 
 		const cloneId = harness.capturedOptions?.agentId;
-		expect(cloneId).toMatch(/^Tan-/);
+		// A tan is named by its generated 1-3 word title now, not a `Tan-<hash>` id.
+		expect(cloneId).toMatch(/^\S+(?: \S+){0,2}$/);
 		expect(harness.ctx.focusAgentSession).toHaveBeenCalledWith(cloneId);
 	});
 

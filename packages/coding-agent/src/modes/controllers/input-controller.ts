@@ -414,14 +414,14 @@ export class InputController {
 
 	/**
 	 * Esc while viewing a subagent: interrupt its in-flight turn in place rather
-	 * than dropping the view. Focused maintenance — compaction, handoff, retry —
-	 * stays uncancellable (#2819), so this reports `false` and the caller falls
+	 * than dropping the view. Focused maintenance — compaction, retry — stays
+	 * uncancellable (#2819), so this reports `false` and the caller falls
 	 * through to clearing the draft or returning to main. Returns whether a turn
 	 * was interrupted.
 	 */
 	#abortFocusedTurn(): boolean {
 		const target = this.ctx.viewSession;
-		if (target.isCompacting || target.isGeneratingHandoff || target.isRetrying) return false;
+		if (target.isCompacting || target.isRetrying) return false;
 		if (!target.isStreaming) return false;
 		void target.abort({ reason: USER_INTERRUPT_LABEL });
 		this.ctx.updatePendingMessagesDisplay();
