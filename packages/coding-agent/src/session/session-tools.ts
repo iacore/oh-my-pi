@@ -900,12 +900,12 @@ export class SessionTools {
 		return [...new Set([...base, ...mountedNames])];
 	}
 
-	/** Tool command state while the active `bash` tool runs the commands; undefined while tools present top-level. */
+	/** Tool command state while the active shell tool runs the commands; undefined while tools present top-level. */
 	get activeToolCommands(): ToolCommandState | undefined {
 		if (!this.#toolCommands || !toolCommandHostAvailable(this.#builtInToolNames, this.#hasNativeTool)) {
 			return undefined;
 		}
-		return this.getActiveToolNames().includes("bash") ? this.#toolCommands : undefined;
+		return this.getActiveToolNames().some(isShellToolName) ? this.#toolCommands : undefined;
 	}
 
 	/** Names currently presented as tool commands. */
@@ -1507,13 +1507,13 @@ export class SessionTools {
 			const tool = this.#toolRegistry.get(name);
 			return tool ? [{ name, tool }] : [];
 		});
-		// Tool commands run inside the `bash` tool: mounting engages only while it
+		// Tool commands run inside the shell tool: mounting engages only while it
 		// is enabled and a tool that can run them is still there; every mountable
 		// tool presents top-level otherwise.
 		const commandTransportActive =
 			this.#toolCommands !== undefined &&
 			toolCommandHostAvailable(this.#builtInToolNames, this.#hasNativeTool) &&
-			selectedTools.some(({ name }) => name === "bash");
+			selectedTools.some(({ name }) => isShellToolName(name));
 		const isPresentationPinned = (name: string): boolean =>
 			this.#presentationPinnedToolNames?.has(name) === true || this.#runtimeSelectedToolNames?.has(name) === true;
 		// The setting, not a pin, decides MCP presentation: eval namespaces replace

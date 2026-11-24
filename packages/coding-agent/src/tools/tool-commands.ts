@@ -137,8 +137,8 @@ export interface ToolCommandState {
 	decorateExecution?(tool: Tool): Tool;
 }
 
-/** Tool that hosts tool commands: mounted tools run as commands inside its shell. */
-const TOOL_COMMAND_HOST_NAME = "bash";
+/** Tool that hosts tool commands: mounted tools run as commands inside its shell, in either dialect. */
+const TOOL_COMMAND_HOST_NAMES = ["bash", "fish"] as const;
 
 /**
  * Whether the session still has a tool that can run tool commands: the native built-in host,
@@ -146,14 +146,14 @@ const TOOL_COMMAND_HOST_NAME = "bash";
  * replacement never has to implement the transport — `RegisteredToolAdapter` routes a line made
  * only of tool commands back to the native host, which dispatches exactly the tools a top-level
  * call would have run — so it does not matter whether the replacement delegates. Without a native
- * host (a session whose `bash` is only an extension tool) nothing can dispatch the commands, so
+ * host (a session whose shell tool is only an extension tool) nothing can dispatch the commands, so
  * the transport stays off and mountable tools present top-level (#18339).
  */
 export function toolCommandHostAvailable(
 	builtInNames: ReadonlySet<string>,
 	hasNativeTool: ((name: string) => boolean) | undefined,
 ): boolean {
-	return builtInNames.has(TOOL_COMMAND_HOST_NAME) || hasNativeTool?.(TOOL_COMMAND_HOST_NAME) === true;
+	return TOOL_COMMAND_HOST_NAMES.some(name => builtInNames.has(name) || hasNativeTool?.(name) === true);
 }
 
 /** Full-help character budget for system-prompt tool-command sections. */

@@ -360,7 +360,7 @@ import {
 	resolveToolCallIntent,
 } from "./job-widgets";
 import { createBrowserPrelude } from "./tools/browser";
-import { isMCPToolName, normalizeToolNames, presentationOrder } from "./tools/builtin-names";
+import { isMCPToolName, isShellToolName, normalizeToolNames, presentationOrder } from "./tools/builtin-names";
 import { createComputerPrelude } from "./tools/computer";
 import { createRatchetPrelude } from "./ratchet/prelude-definition";
 import { createArchivePrelude } from "./archive/prelude-definition";
@@ -1794,7 +1794,6 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
 	}
 	return commands;
 }
-
 
 /**
  * Create an AgentSession with the specified options.
@@ -4599,10 +4598,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		}
 		// Partition the initial enabled set for the command transport. Tool instances
 		// remain in the canonical map; only presentation names move between layers.
-		// Tools run as commands inside the `bash` tool, so mounting engages only
-		// when `bash` starts enabled and a tool that can run them is still there.
+		// Tools run as commands inside the shell tool (either dialect), so mounting
+		// engages only when it starts enabled and a tool that can run them is still there.
 		const commandTransportActive =
-			toolSession.toolCommands !== undefined && commandHostAvailable() && initialToolNames.includes("bash");
+			toolSession.toolCommands !== undefined && commandHostAvailable() && initialToolNames.some(isShellToolName);
 		if (toolSession.toolCommands) {
 			const topLevelToolNames: string[] = [];
 			const mountedNames: string[] = [];

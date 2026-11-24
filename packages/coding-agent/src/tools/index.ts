@@ -57,7 +57,7 @@ import { AstGrepTool } from "./ast-grep";
 import { BashTool } from "./bash";
 import { createFishTool } from "./fish";
 import { CdTool } from "./cd";
-import { type BuiltinToolName, type HiddenToolName, normalizeToolNames } from "./builtin-names";
+import { type BuiltinToolName, type HiddenToolName, isShellToolName, normalizeToolNames } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
 import { ContextNotesTool, NewContextTool } from "./context-notes";
 import { DebugTool } from "./debug";
@@ -940,12 +940,11 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const builtInNames = new Set(tools.map(tool => tool.name));
 	for (const tool of tools) toolRegistry.set(tool.name, tool);
 
-	// Tool commands run inside the `bash` tool. Structured children must expose
-	// only their host-provided names, so they never allocate command state that
-	// later SDK assembly could populate. Explicitly requested built-ins keep
-	// their top-level presentation.
+	// Tool commands run inside the shell tool (either dialect). Structured children must expose
+	// only their host-provided names, so they never allocate command state that later SDK
+	// assembly could populate. Explicitly requested built-ins keep their top-level presentation.
 	const toolCommandsEnabled =
-		!restrictToolNames && cfgToolsCommands.get(session.settings) && tools.some(tool => tool.name === "bash");
+		!restrictToolNames && cfgToolsCommands.get(session.settings) && tools.some(tool => isShellToolName(tool.name));
 	let presentedSpecialTool = false;
 	if (toolCommandsEnabled) {
 		const mountBuiltinTools = requestedTools === undefined;
