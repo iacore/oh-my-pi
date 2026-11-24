@@ -324,7 +324,10 @@ Built-in tool wrapping appends the model-facing recovery notice automatically, f
 - collapsed preview keeps last 20 logical lines,
 - line clamp at 4000 visible columns per line,
 - shows truncation + artifact warnings when metadata is present,
-- marks cancelled/error/exit state separately.
+- marks cancelled/error/exit state separately,
+- names its head after the shell that ran it (`Fish` for a fish `!` run), recorded on the message as `shell` so a resumed transcript keeps the label.
+
+The run is presented in the conversation where it was typed even while a model turn is streaming — a `!` command is a transcript turn of its own, not a strip under the live transcript — and its result is appended to the session at the turn's next safe boundary.
 
 This component is wired by `CommandController.handleBashCommand()` and fed from `AgentSession.executeBash()`.
 

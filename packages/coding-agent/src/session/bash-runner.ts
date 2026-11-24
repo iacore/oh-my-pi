@@ -12,6 +12,7 @@ import {
 } from "../exec/bash-executor";
 import type { ExtensionRunner } from "../extensibility/extensions";
 import { type BashInteractiveUi, runInteractiveBashPty } from "../tools/bash-interactive";
+import { buildNonInteractiveEnv } from "../exec/non-interactive-env";
 import { outputMeta } from "../tools/output-meta";
 import { clampTimeout } from "../tools/tool-timeouts";
 import type { BashExecutionMessage } from "./messages";
@@ -208,7 +209,7 @@ export class BashRunner {
 			// `0` is the executor's "deadline disabled"; the PTY spells that undefined.
 			timeoutMs: options.timeout === 0 ? undefined : options.timeout,
 			signal: options.signal,
-			env: preflight.env,
+			env: buildNonInteractiveEnv(preflight.env),
 			compact: options.compact,
 		});
 	}
@@ -366,7 +367,7 @@ export class BashRunner {
 	#createMessage(
 		command: string,
 		result: BashResult,
-		options?: { excludeFromContext?: boolean },
+		options?: BashExecuteOptions,
 	): BashExecutionMessage {
 		const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).minimized(result.minimized).get();
 		return {
@@ -376,6 +377,11 @@ export class BashRunner {
 			exitCode: result.exitCode,
 			cancelled: result.cancelled,
 			truncated: result.truncated,
+			// A `!` command runs in the operator's own shell; the card says which one.
+			shell:
+				options?.useUserShell === true
+					? path.basename(this.#host.settings.getShellConfig().shell)
+					: undefined,
 			images: result.images,
 			meta,
 			timestamp: Date.now(),

@@ -1989,9 +1989,9 @@ export class CommandController {
 		}
 
 		if (shouldPersistCwd) {
-			await this.#withSessionMove(() => this.#executeBashCommand(command, excludeFromContext, isDeferred, true));
+			await this.#withSessionMove(() => this.#executeBashCommand(command, excludeFromContext, true));
 		} else {
-			await this.#executeBashCommand(command, excludeFromContext, isDeferred, false);
+			await this.#executeBashCommand(command, excludeFromContext, false);
 		}
 	}
 
@@ -1999,10 +1999,14 @@ export class CommandController {
 	async #executeBashCommand(
 		command: string,
 		excludeFromContext: boolean,
-		isDeferred: boolean,
 		shouldPersistCwd: boolean,
 	): Promise<boolean> {
-		const component = new BashExecutionComponent(command, this.ctx.ui, excludeFromContext);
+		const component = new BashExecutionComponent(
+			command,
+			this.ctx.ui,
+			excludeFromContext,
+			path.basename(this.ctx.settings.getShellConfig().shell),
+		);
 		this.ctx.bashComponent = component;
 		// Provisional until the session records the run.
 		const block = new PresentedBlock(
@@ -2034,12 +2038,10 @@ export class CommandController {
 			this.ctx.ui.requestRender();
 		};
 
-		if (isDeferred) {
-			this.ctx.pendingShellContainer.addChild(block);
-			this.ctx.pendingBashComponents.push(block);
-		} else {
-			this.ctx.present(block);
-		}
+		// A `!` run is a transcript turn like any other: show it where it was
+		// typed, even while a model turn is streaming, instead of parking it in
+		// the live strip under the transcript until the run ends.
+		this.ctx.present(block);
 		this.ctx.ui.requestRender();
 
 		// `doas`/`sudo` read the password from the controlling terminal, which

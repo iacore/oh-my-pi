@@ -854,6 +854,23 @@ describe("user shell runs", () => {
 		expect(run.describe(cx(["card", "ansi"])).k).toBe("card");
 	});
 
+	it("names a run by the operator's shell instead of calling every local run bash", () => {
+		const fish = new BashExecutionComponent("echo hi", ui, false, "fish");
+		fish.setComplete(0, false);
+		const described = fish.describe(cx(["tool", "ansi", "code"]));
+		const p = props(described);
+		expect(p.name).toBe("fish");
+		expect(p.title).toBe("Fish");
+		const [box] = nodes(described.c);
+		expect(sections(box)).toEqual(["code:omp.tool.bash.command", "row:omp.run.foot"]);
+		fish.dispose();
+
+		const bash = new BashExecutionComponent("echo hi", ui, false, "bash");
+		bash.setComplete(0, false);
+		expect(props(bash.describe(cx(["tool", "ansi", "code"]))).title).toBe("Bash");
+		bash.dispose();
+	});
+
 	it("show the minimizer's filter and byte counts in both footers", () => {
 		const run = new BashExecutionComponent("git diff", ui, false);
 		run.appendOutput("diff --git a/x b/x");

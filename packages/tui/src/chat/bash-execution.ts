@@ -91,6 +91,8 @@ export class BashExecutionComponent extends Container {
 	#showImages = true;
 	readonly #instanceId = nextBashExecutionId++;
 	readonly #command: string;
+	/** `fish`/`zsh`/… when the operator's own shell ran a `!` command; undefined for tool runs. */
+	readonly #shell: string | undefined;
 	readonly #colorKey: ExecutionColorKey;
 	readonly #startedAt = performance.now();
 	#endedAt: number | undefined;
@@ -99,9 +101,10 @@ export class BashExecutionComponent extends Container {
 	readonly #native = new Memo();
 	readonly #nativeImages = new NativeImageCache();
 
-	constructor(command: string, ui: TUI, excludeFromContext = false) {
+	constructor(command: string, ui: TUI, excludeFromContext = false, shell?: string) {
 		super();
 		this.#command = command;
+		this.#shell = shell;
 		this.#ui = ui;
 
 		// Use dim border for excluded-from-context commands (!! prefix)
@@ -209,8 +212,10 @@ export class BashExecutionComponent extends Container {
 			return dataFirst
 				? describeExecutionTool({
 						...common,
-						name: "bash",
-						title: "Bash",
+						// A `!` command is the operator's own shell, so the card names it
+						// (Fish) instead of calling every local run Bash.
+						name: this.#shell === "fish" ? "fish" : "bash",
+						title: this.#shell === "fish" ? "Fish" : "Bash",
 						command: this.#command,
 						lang: "bash",
 						excluded: this.#colorKey === "dim",

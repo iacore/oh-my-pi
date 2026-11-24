@@ -228,7 +228,7 @@ describe("bash shortcut command", () => {
 		const childDir = path.join(sourceDir, "child");
 		await fs.mkdir(childDir);
 		try {
-			const { ctx, executeBash, pendingShellContainer, state } = createCwdContext(sourceDir, true);
+			const { ctx, executeBash, pendingShellContainer, present, state } = createCwdContext(sourceDir, true);
 			executeBash.mockImplementationOnce(async () => ({
 				output: "",
 				exitCode: 0,
@@ -246,8 +246,11 @@ describe("bash shortcut command", () => {
 
 			expect(state.cwd).toBe(sourceDir);
 			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
-			expect(pendingShellContainer.children).toHaveLength(1);
-			expect(ctx.pendingBashComponents).toHaveLength(1);
+			// The run is shown in the conversation at once, like a prompt sent
+			// mid-run, instead of waiting in the strip under the transcript.
+			expect(present).toHaveBeenCalledTimes(1);
+			expect(pendingShellContainer.children).toHaveLength(0);
+			expect(ctx.pendingBashComponents).toHaveLength(0);
 			expect(ctx.showWarning).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });

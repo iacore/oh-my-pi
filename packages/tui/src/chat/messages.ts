@@ -216,6 +216,8 @@ export interface BashExecutionMessage {
 	exitCode: number | undefined;
 	cancelled: boolean;
 	truncated: boolean;
+	/** User shell the `!` command ran in (`fish`, `zsh`, …); absent for the agent's own tool runs. */
+	shell?: string;
 	/** Images extracted from terminal graphics in the command's stdout. */
 	images?: ImageContent[];
 	meta?: OutputMeta;

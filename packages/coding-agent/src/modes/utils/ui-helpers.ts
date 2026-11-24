@@ -322,7 +322,12 @@ export class UiHelpers {
 	addMessageToChat(message: AgentMessage, options?: AddMessageOptions): Component[] {
 		switch (message.role) {
 			case "bashExecution": {
-				const component = new BashExecutionComponent(message.command, this.ctx.ui, message.excludeFromContext);
+				const component = new BashExecutionComponent(
+					message.command,
+					this.ctx.ui,
+					message.excludeFromContext,
+					message.shell,
+				);
 				if (message.output) {
 					component.appendOutput(message.output);
 				}
