@@ -201,6 +201,9 @@ export class BashRunner {
 		});
 		return await runInteractiveBashPty(options.ui, {
 			command: preflight.command,
+			// The session shell parses the command line, as the plain executor would.
+			application: settings.getShellConfig().shell,
+			args: ["-c", preflight.command],
 			cwd: options.cwd,
 			// `0` is the executor's "deadline disabled"; the PTY spells that undefined.
 			timeoutMs: options.timeout === 0 ? undefined : options.timeout,
@@ -354,7 +357,7 @@ export class BashRunner {
 	async #saveOriginalArtifact(target: BashSessionTarget, originalText: string): Promise<string | undefined> {
 		try {
 			const destination = target.destination ?? (await target.pending);
-			return await destination?.manager.saveArtifact(originalText, "bash-original");
+			return await destination?.manager.saveArtifact(originalText);
 		} catch {
 			return undefined;
 		}

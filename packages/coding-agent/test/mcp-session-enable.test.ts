@@ -16,7 +16,7 @@ const CONFIG: MCPStdioServerConfig = {
  * it — the same shape config discovery produces for an `enabled: false` server.
  */
 function createManager(): MCPManager {
-	return new MCPManager(process.cwd(), null, async (_cwd, options) => {
+	return new MCPManager(process.cwd(), async (_cwd, options) => {
 		const configs: Record<string, MCPServerConfig> = {};
 		if (options?.forceEnable?.has("delayed")) configs.delayed = CONFIG;
 		return { configs, sources: {}, exaApiKeys: [] };
@@ -25,7 +25,7 @@ function createManager(): MCPManager {
 
 /** A loader where `delayed` is enabled in config unless the session suppresses it. */
 function createEnabledManager(seen: Array<ReadonlySet<string> | undefined> = []): MCPManager {
-	return new MCPManager(process.cwd(), null, async (_cwd, options) => {
+	return new MCPManager(process.cwd(), async (_cwd, options) => {
 		seen.push(options?.forceDisable);
 		const configs: Record<string, MCPServerConfig> = {};
 		if (!options?.forceDisable?.has("delayed")) configs.delayed = CONFIG;

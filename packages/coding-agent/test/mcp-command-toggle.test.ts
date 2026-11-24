@@ -165,4 +165,18 @@ describe("/mcp enable and disable", () => {
 			enabled: false,
 		});
 	});
+
+	test("enabling a server another tool's config provides connects it for this session only", async () => {
+		// Codex's config is another tool's file, and `/mcp enable` is session-scoped:
+		// the server starts for this session while the user's config stays untouched.
+		const codexConfig = path.join(projectDir, ".codex", "config.toml");
+		await Bun.write(codexConfig, '[mcp_servers.codex_js]\ncommand = "/opt/codex/cua_node/bin/node_repl"\n');
+		const { controller, mcpManager } = createController();
+
+		await controller.handle("/mcp enable codex_js");
+
+		expect(mcpManager.enableServerForSession).toHaveBeenCalledWith("codex_js");
+		const userConfig = await readMCPConfigFile(getMCPConfigPath("user", projectDir));
+		expect(userConfig.enabledServers).toBeUndefined();
+	});
 });

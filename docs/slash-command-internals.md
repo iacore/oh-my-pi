@@ -188,6 +188,7 @@ Slash command state is refreshed:
 - when the editor component is swapped
 - by explicit plugin reload flows such as `/reload-plugins`
 - when session command-metadata notifications arrive, including live settings changes, skill management, and MCP prompt updates (autocomplete rebuilds from current session state)
+- after `/wt` ran a new worktree's `post-checkout` hook (linked git worktree or ovnfs checkout): once the move and `worktree.cleanSource` are done and reported, `/wt` runs the hook with the arguments `git worktree add` gives it (`vcs.runPostCheckoutHook`, the helper behind `omp worktree add`) and then refreshes session skills/commands, so they include what the hook added. A failing hook keeps the worktree and shows a warning; the hook cannot be cancelled. An ovnfs checkout has its own git dir without `hooks/`: only a hook found through `core.hooksPath` runs there, not one in the source repo's `.git/hooks`
 
 There is no continuous file watcher for command directories.
 
@@ -320,10 +321,16 @@ viewed: the focused subagent's session when one is focused, otherwise the main
 session. It uses that session's active model and context, including partial
 streaming assistant text. Bare `/btw` opens that view's history, with the newest
 question selected.
+
 The model can read the saved side questions through `btw://`: bare `btw://`
 lists the calling session's topics, and `btw://<id>` returns every turn with
 full answers (line selectors apply). A subagent sees only its own topics, never
 the parent's.
+
+In the interactive composer, one leading `?` followed by question text is a
+shortcut for `/btw <question>`. A bare `?` or a draft starting with consecutive
+question marks (`??`) submits as a normal prompt.
+
 Saved side questions are not appended to the main transcript or sent as history
 to unrelated turns. Each new `/btw <question>` remains independent; explicit
 follow-ups include only the selected side conversation alongside the current

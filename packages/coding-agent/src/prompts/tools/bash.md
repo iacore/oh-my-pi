@@ -1,6 +1,8 @@
-Persistent shell: one fact command/pipeline; dependencies use `&&`.
+Persistent bash 5.3.
+Each call starts in the session cwd with `set -e` off; use `cwd`, not `cd`{{#if hasPty}}; `pty` = interactive{{/if}}.
+One fact command/pipeline per call; dependencies use `&&`.
 {{#if hasEval}}Scripts/heredocs/`$(...)`/complex pipelines → `eval`.{{else}}Scripts/heredocs/`$(...)`/complex flow → dedicated tool or checked-in script.{{/if}}
-`cwd`, not `cd`; `pty` only interactive. `doas`/`sudo` get the terminal for their password prompt on their own — `pty` is not needed for them, the user answers the prompt there, and the password is never passed in the command.
+`doas`/`sudo` get the terminal for their password prompt on their own — `pty` is not needed for them, the user answers the prompt there, and the password is never passed in the command.
 Internal URIs work as paths for builtins/coreutils, redirects, globs.
 In-process builtins, ahead of PATH: {{join builtins ", "}}.
 {{#if asyncEnabled}}
@@ -11,7 +13,7 @@ Don't trunc output by habit, result will be summarized and saved as an artifact.
 {{#if hasLaunch}}
 Long-lived services:
 - unique name; ready requires name; no async/timeout; pty defaults true.
-- ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.
+- ready needs log regex or port (both if given); host defaults localhost, ready.timeout 30s.
 - `notify` (regex) sends each matching output line as a follow-up while the service runs.
 {{/if}}
 {{#if autoBackgroundEnabled}}

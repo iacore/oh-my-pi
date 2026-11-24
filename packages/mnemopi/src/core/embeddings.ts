@@ -539,13 +539,19 @@ async function embedApiBatch(texts: readonly string[], role: EmbeddingRole): Pro
 	}
 }
 
+// Same level policy as the local-model failures: debug, or warn when runtime debug is on.
+function logProviderFailure(message: string, error: unknown, context?: Record<string, unknown>): void {
+	logger[mnemopiDebugEnabled() ? "warn" : "debug"](message, { ...context, error: String(error) });
+}
+
 async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> {
 	if (provider.available === undefined) {
 		return true;
 	}
 	try {
 		return await provider.available();
-	} catch {
+	} catch (error) {
+		logProviderFailure("mnemopi: embedding provider availability check failed", error);
 		return false;
 	}
 }
@@ -653,7 +659,8 @@ export async function embed(
 		if (options?.allowRemote?.("") === false) return null;
 		try {
 			return await collectMatrix(await activeProvider.embed(texts));
-		} catch {
+		} catch (error) {
+			logProviderFailure("mnemopi: embedding provider failed", error, { textCount: texts.length });
 			return null;
 		}
 	}
@@ -661,7 +668,8 @@ export async function embed(
 		if (options?.allowRemote?.("") === false) return null;
 		try {
 			return await collectMatrix(await providerOverride.embed(texts));
-		} catch {
+		} catch (error) {
+			logProviderFailure("mnemopi: embedding provider failed", error, { textCount: texts.length });
 			return null;
 		}
 	}
