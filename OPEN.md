@@ -1,5 +1,34 @@
 # Open items — omp-custom
 
+<!-- item: synced-to-19-1-1-pinned-before-reactive-tui state=blocked owner=- blocked=upstream -->
+
+## `custom` is synced to 19.1.1 and pinned before the reactive TUI rewrite (2026-11-25)
+
+`origin/main` (`26702495a5`) rebuilds the terminal UI as a reactive pi-tui in
+`7784896434` (2026-11-24: 3148 files, `packages/tui` 887→230 files, every
+screen and tool card moved into `coding-agent/src/ui/*.tsx`). That commit
+deletes the tree every local TUI fix lives in — folded tool/read rows and the
+detail toggle, Ctrl+H thinking fold, the fish shell card, read-row links,
+banner notify, a recalled prompt opening at its end — so this sync merges
+`7784896434^` instead: all upstream work through 19.1.1 with the old TUI
+intact, and the rewrite becomes its own port.
+
+- **Merge**: 54 conflicts. Local behavior kept per file: the fish dialect with
+  bash off by default, the `cd` tool, `btw://`, session-scoped
+  `/mcp enable|disable` plus the `mcp` tool, temp paths under `<tmpdir>/omp`,
+  the interrupt/retake latch, read-row links and the fold/detail system.
+- **Gap the merge exposed**: tool commands were gated on a literal `bash`
+  tool, so the default `fish` shell never mounted them and MCP route docs
+  vanished. The gates now use `isShellToolName` in `tools/index.ts`,
+  `tools/tool-commands.ts`, `session/session-tools.ts` and `sdk.ts`.
+- **Dropped with upstream**: `xd://` and `artifact://` (spilled output reads
+  through `local://<N>.log` now), core auto-learn capture (already
+  extension-owned here), the autoresearch extension, and persistent
+  `/mcp enable|disable` (ours stay session-only).
+- **Verified**: `check:types` clean across every package; the tool, MCP
+  instructions, session-enable, keybinding and tan suites green; `cargo check
+  -p omp_builtins` clean; `packages/tui` render suites green.
+
 <!-- item: fish-shell-tool state=open owner=- blocked=- -->
 
 ## The shell tool is `fish` and bash is off by default — landed on `custom` (`860c2b4c71`), not upstreamed (2026-11-17)
