@@ -9258,20 +9258,22 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	}
 
 	/**
-	 * Resume the agent for the operator's `.`/`c` continue shortcut. A running turn
-	 * is interrupted first, as Esc would, so the continuation starts from the
-	 * current state (e.g. a model picked mid-turn); input queued behind that turn
-	 * continues the run in place of the directive. A prompt the model has not
-	 * answered yet (an interrupt before any output) runs again as is: a continue
-	 * directive would add nothing. Otherwise the hidden manual-continue directive
-	 * asks the model to pick its work back up. A conversation with neither a user
-	 * turn nor a compaction/branch summary of earlier ones cannot be continued.
+	 * Resume the agent for the operator's `.`/`c` continue shortcut, and the idle
+	 * path `/continue` now shares. A running turn is interrupted first, as Esc
+	 * would, so the continuation starts from the current state (e.g. a model
+	 * picked mid-turn); input queued behind that turn continues the run in place
+	 * of the directive. An Esc-interrupted assistant tail is replayed as prefill,
+	 * exactly as `/continue` does. A prompt the model has not answered yet (an
+	 * interrupt before any output) runs again as is: a continue directive would add
+	 * nothing. Otherwise the hidden manual-continue directive asks the model to
+	 * pick its work back up, and a transcript with nothing to continue from gets a
+	 * bare turn — never a refusal, because "keep going" on an empty session is a
+	 * legitimate request to start one.
 	 * `onAdmitted` fires once a continue directive claims the session; a resume that
 	 * schedules the continuation or hands the run to queued input returns without
 	 * calling it, once that is under way.
 	 *
 	 * @throws {AgentBusyError} when another turn claims the session between the interrupt and the continuation.
-	 * @throws {Error} when there is no conversation to resume.
 	 */
 	async resume(options?: { onAdmitted?: () => void }): Promise<void> {
 		const onAdmitted = options?.onAdmitted;
@@ -9304,20 +9306,38 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 	 * before returning.
 	 */
 	async #resumeIdle(onAdmitted?: () => void): Promise<void> {
+		// An interrupt before any output did not answer its prompt: re-running it is
+		// the whole continuation, and replaying the empty assistant placeholder as
+		// prefill would ask for nothing.
 		const prompt = this.#recovery.prepareResume();
-		if (!prompt) {
-			// A handoff or full compaction can leave only the summary: it carries the
-			// summarized requests, so it is a conversation the directive can resume.
-			const resumable = this.agent.state.messages.some(
-				message =>
-					isUserAuthoredMessage(message) ||
-					message.role === "compactionSummary" ||
-					message.role === "branchSummary",
-			);
-			if (!resumable) {
-				throw new Error("Nothing to resume");
-			}
-			await this.prompt(manualContinuePrompt, {
+		if (prompt) {
+			this.#noteUserTurn();
+			this.#todo.resetCycle();
+			this.#resetPromptMaintenanceState();
+			this.#scheduleAgentContinue({ source: "manual-continue", turnRecords: [prompt] });
+			return;
+		}
+		// An Esc-interrupted assistant that did stream is replayed as prefill, exactly
+		// as `/continue` does. Before this, the `.`/`c` shortcut answered even a
+		// partial assistant turn with a fresh continue directive, so the two entry
+		// points to "keep going" behaved differently.
+		if (this.continueInterrupted()) {
+			onAdmitted?.();
+			return;
+		}
+		// A handoff or full compaction can leave only the summary: it carries the
+		// summarized requests, so it is a conversation the directive can resume.
+		const resumable = this.agent.state.messages.some(
+			message =>
+				isUserAuthoredMessage(message) ||
+				message.role === "compactionSummary" ||
+				message.role === "branchSummary",
+		);
+		if (!resumable) {
+			// Nothing to replay and nothing to continue from: `/continue` has always
+			// answered this with a bare turn, so the shortcut sends the same empty
+			// prompt instead of failing with "Nothing to resume".
+			await this.prompt("", {
 				synthetic: true,
 				userInitiated: true,
 				expandPromptTemplates: false,
@@ -9325,10 +9345,12 @@ export class AgentSession implements SettingsScope, AgentViewSession {
 			});
 			return;
 		}
-		this.#noteUserTurn();
-		this.#todo.resetCycle();
-		this.#resetPromptMaintenanceState();
-		this.#scheduleAgentContinue({ source: "manual-continue", turnRecords: [prompt] });
+		await this.prompt(manualContinuePrompt, {
+			synthetic: true,
+			userInitiated: true,
+			expandPromptTemplates: false,
+			onPromptAdmitted: onAdmitted,
+		});
 	}
 
 	/**

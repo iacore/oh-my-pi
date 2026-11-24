@@ -13,7 +13,7 @@ import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-comman
 
 const model = { api: "mock", provider: "mock", id: "mock-model" } as unknown as Model;
 
-const EMPTY_PROMPT_COPY = "Continue: nothing interrupted — sends an empty prompt";
+const EMPTY_PROMPT_COPY = "Continue: nothing interrupted — continues from context";
 
 function emptyUsage(): AssistantMessage["usage"] {
 	return {
@@ -46,11 +46,13 @@ function assistant(stopReason: AssistantMessage["stopReason"], additions?: Parti
 
 function createTuiRuntime(options: { isStreaming?: boolean; resumed?: boolean; messages?: unknown[] }) {
 	const continueInterrupted = vi.fn(() => options.resumed ?? false);
+	const resume = vi.fn(async () => {});
 	const setText = vi.fn();
 	const showError = vi.fn();
 	const showStatus = vi.fn();
 	return {
 		continueInterrupted,
+		resume,
 		setText,
 		showError,
 		showStatus,
@@ -59,6 +61,7 @@ function createTuiRuntime(options: { isStreaming?: boolean; resumed?: boolean; m
 				session: {
 					isStreaming: options.isStreaming ?? false,
 					continueInterrupted,
+					resume,
 					messages: options.messages ?? [],
 				} as unknown as InteractiveModeContext["session"],
 				// `/continue` has no `handleTui`, so the TUI dispatcher adapts `handle`
@@ -74,15 +77,17 @@ function createTuiRuntime(options: { isStreaming?: boolean; resumed?: boolean; m
 }
 
 describe("/continue slash command (TUI)", () => {
-	it("hands the dispatcher an empty prompt when the last turn is complete", async () => {
+	it("resumes from the shared idle path when the last turn is complete", async () => {
 		const harness = createTuiRuntime({ resumed: false, messages: [userMessage("hi"), assistant("stop")] });
 
 		const handled = await executeBuiltinSlashCommand("/continue", harness.runtime);
 
-		// A returned string is the dispatcher's "send this as the prompt" contract;
-		// empty means the model is asked to keep going from the settled tail.
-		expect(handled).toBe("");
+		// Nothing interrupted: the command hands the hop to the same `resume()` the
+		// `.`/`c` shortcut uses, which decides between the continue directive and a
+		// bare turn for an empty transcript.
+		expect(handled).toBe(true);
 		expect(harness.continueInterrupted).toHaveBeenCalledTimes(1);
+		expect(harness.resume).toHaveBeenCalledTimes(1);
 		expect(harness.showError).not.toHaveBeenCalled();
 		expect(harness.showStatus).not.toHaveBeenCalled();
 		expect(harness.setText).toHaveBeenCalledWith("");
@@ -125,14 +130,16 @@ describe("/continue slash command (TUI)", () => {
 
 function acpRuntime({ isStreaming = false, resumed = false }: { isStreaming?: boolean; resumed?: boolean }) {
 	const continueInterrupted = vi.fn(() => resumed);
+	const resume = vi.fn(async () => {});
 	const keepTurnOpenUntilIdle = vi.fn(async () => {});
 	const output = vi.fn();
 	return {
 		continueInterrupted,
+		resume,
 		keepTurnOpenUntilIdle,
 		output,
 		runtime: {
-			session: { isStreaming, continueInterrupted },
+			session: { isStreaming, continueInterrupted, resume },
 			output,
 			keepTurnOpenUntilIdle,
 		} as unknown as SlashCommandRuntime,
@@ -150,14 +157,15 @@ describe("/continue dispatch (ACP)", () => {
 		expect(result).toEqual({ consumed: true, failed: true });
 	});
 
-	it("requests an empty prompt, keeping its ACP turn open, when there is nothing to continue", async () => {
+	it("continues from context through the shared resume path when there is nothing interrupted", async () => {
 		const h = acpRuntime({ resumed: false });
 
 		const result = await executeAcpBuiltinSlashCommand("/continue", h.runtime);
 
-		expect(result).toEqual({ prompt: "" });
+		expect(h.resume).toHaveBeenCalledTimes(1);
 		expect(h.output).not.toHaveBeenCalled();
-		expect(h.keepTurnOpenUntilIdle).not.toHaveBeenCalled();
+		expect(h.keepTurnOpenUntilIdle).toHaveBeenCalledTimes(1);
+		expect(result).toEqual({ consumed: true, agentInvoked: true });
 	});
 
 	it("announces the continuation and holds the ACP turn open", async () => {
@@ -182,6 +190,7 @@ function createInteractiveHarness(continueInterrupted: () => boolean) {
 	let text = "";
 	const addToHistory = vi.fn();
 	const onInputCallback = vi.fn();
+	const resume = vi.fn(async () => {});
 	const editor = {
 		onSubmit: undefined as undefined | ((t: string) => Promise<void>),
 		getText: () => text,
@@ -215,6 +224,7 @@ function createInteractiveHarness(continueInterrupted: () => boolean) {
 			promptTemplates: [],
 			messages: [],
 			continueInterrupted,
+			resume,
 			maybeStartTitleGeneration: vi.fn(),
 		},
 		sessionManager: { getCwd: () => "/tmp" },
@@ -238,18 +248,18 @@ function createInteractiveHarness(continueInterrupted: () => boolean) {
 		showWarning: vi.fn(),
 		flushPendingBashComponents: vi.fn(),
 	} as unknown as InteractiveModeContext;
-	return { ctx, editor, addToHistory, onInputCallback };
+	return { ctx, editor, addToHistory, onInputCallback, resume };
 }
 
 describe("/continue in the interactive submit path", () => {
-	it("submits an empty prompt when nothing is interrupted", async () => {
+	it("continues through the shared idle resume when nothing is interrupted", async () => {
 		const harness = createInteractiveHarness(() => false);
 		new InputController(harness.ctx).setupEditorSubmitHandler();
 
 		await harness.editor.onSubmit?.("/continue");
 
-		expect(harness.onInputCallback).toHaveBeenCalledTimes(1);
-		expect(harness.onInputCallback.mock.calls[0]?.[0]).toMatchObject({ text: "", cancelled: false });
+		expect(harness.resume).toHaveBeenCalledTimes(1);
+		expect(harness.onInputCallback).not.toHaveBeenCalled();
 		expect(harness.addToHistory).toHaveBeenCalledWith("/continue");
 	});
 

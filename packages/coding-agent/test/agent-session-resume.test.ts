@@ -1,9 +1,10 @@
 /**
- * Contract: the `.`/`c` continue shortcut (`AgentSession.resume`) re-runs a
- * prompt the model has not answered yet without adding any message, injects
+ * Contract: the `.`/`c` continue shortcut (`AgentSession.resume`) and `/continue`
+ * share one idle path — replay an Esc-interrupted assistant tail as prefill,
+ * re-run a prompt the model has not answered without adding a message, inject
  * the hidden manual-continue directive after an answered turn (typed or
- * `/skill:` prompt or compacted history), and refuses to continue an empty
- * conversation.
+ * `/skill:` prompt or compacted history), and send a bare turn when there is
+ * nothing to continue from.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
@@ -15,7 +16,7 @@ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { convertToLlm, SKILL_PROMPT_MESSAGE_TYPE } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { convertToLlm, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import manualContinuePrompt from "../src/prompts/system/manual-continue.md" with { type: "text" };
@@ -123,7 +124,7 @@ describe("AgentSession.resume", () => {
 		expect(observed).toEqual([["do the thing"]]);
 	});
 
-	it("returns an uncredentialed prompt for retry and refuses context-free resume", async () => {
+	it("returns an uncredentialed prompt for retry and asks a bare turn for a context-free resume", async () => {
 		const registry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
 		const getApiKey = spyOn(registry, "getApiKey").mockResolvedValue(undefined);
 		try {
@@ -133,7 +134,9 @@ describe("AgentSession.resume", () => {
 
 			await expect(session.prompt("finish this request")).rejects.toThrow("No API key found for anthropic");
 			expect(dropped).toEqual(["finish this request"]);
-			await expect(session.resume()).rejects.toThrow("Nothing to resume");
+			// Nothing to continue from, so the resume dispatches a bare turn — which
+			// fails on the missing credential before any message is recorded.
+			await expect(session.resume()).rejects.toThrow("No API key found for anthropic");
 			expect(mock.calls).toHaveLength(0);
 			expect(session.agent.state.messages).toEqual([]);
 			getApiKey.mockResolvedValue("test-key");
@@ -146,6 +149,54 @@ describe("AgentSession.resume", () => {
 		} finally {
 			getApiKey.mockRestore();
 		}
+	});
+
+	it("starts a bare turn when there is no conversation to continue", async () => {
+		const { session, mock } = createSession([{ content: ["ready"] }]);
+
+		await session.resume();
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(1);
+		// The empty submission carries no user turn; the model answers from the
+		// system prompt alone.
+		expect(session.agent.state.messages.some(message => message.role === "user")).toBe(false);
+		expect(session.agent.state.messages.filter(message => message.role === "assistant")).toHaveLength(1);
+	});
+
+	it("replays an Esc-interrupted assistant tail as prefill, like /continue", async () => {
+		const { session, mock } = createSession([{ content: ["wer"] }]);
+		const partial = {
+			role: "assistant",
+			content: [{ type: "text", text: "half an ans" }],
+			api: "anthropic",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			usage: {
+				input: 1,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 2,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "aborted",
+			errorMessage: USER_INTERRUPT_LABEL,
+			timestamp: Date.now(),
+		} as unknown as AgentMessage;
+		session.agent.replaceMessages([
+			{ role: "user", content: "do the thing", timestamp: Date.now() } as AgentMessage,
+			partial,
+		]);
+
+		await session.resume();
+		await session.waitForIdle();
+
+		// The aborted partial is replayed as the request tail, not replaced by the
+		// hidden continue directive (`/continue`'s prefill path).
+		const sent = mock.calls.at(-1)?.context.messages ?? [];
+		expect(sent.map(message => message.role)).toEqual(["user", "assistant"]);
+		expect(textOf(sent[1] as AgentMessage)).toBe("half an ans");
 	});
 
 	it("injects the continue directive after an answered turn", async () => {
